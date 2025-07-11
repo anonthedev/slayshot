@@ -1,0 +1,65 @@
+# Environment
+.env
+.env.*
+cookies.txt
+
+# Python Virtual Environment
+.venv/
+venv/
+env/
+ENV/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Video Files
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+*.flv
+*.wmv
+*.m4v
+
+# Audio Files
+*.wav
+*.mp3
+*.flac
+*.aac
+*.ogg
+
+# Large Model Files (>50MB)
+*.pth
+*.bin
+*.safetensors
+*.ckpt
+*.h5
+
+# ASD specific ignores
+asd/exps/
+asd/demo/
+asd/AVADataPath/
+asd/colDataPath/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/

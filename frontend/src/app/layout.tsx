@@ -1,0 +1,45 @@
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import "./globals.css";
+import SessionProvider from "@/components/providers/SessionProvider";
+import Navbar from "@/components/Navbar";
+import { Toaster } from "sonner";
+import { ThemeProvider } from "@/components/providers/ThemeProvider";
+
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "OmenClip",
+  description:
+    "Transform long youtube videos into viral clips with AI-powered precision",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <SessionProvider>
+      <html lang="en">
+        <body
+          className={`${inter.variable} antialiased flex flex-col h-screen w-screen overflow-x-hidden`}
+        >
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="dark"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <Navbar />
+            <main className="flex-grow h-full w-full">{children}</main>
+            <Toaster richColors />
+          </ThemeProvider>
+        </body>
+      </html>
+    </SessionProvider>
+  );
+}

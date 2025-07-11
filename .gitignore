@@ -1,0 +1,68 @@
+# Root-level gitignore for monorepo
+
+# Environment files
+.env
+.env.*
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+env/
+ENV/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Large media files
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+*.flv
+*.wmv
+*.m4v
+*.wav
+*.mp3
+*.flac
+*.aac
+*.ogg
+
+# Large model files (>50MB)
+*.pth
+*.bin
+*.safetensors
+*.ckpt
+*.h5
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Build outputs
+/build
+/dist
+/.next
+/out 
