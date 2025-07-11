@@ -317,7 +317,7 @@ export const clipYouTubeVideoWorkflow = inngest.createFunction(
       }
 
       const segmentsData = await segmentsResult.json();
-      const segments = segmentsData.segments;
+      // const segments = segmentsData.segments;
 
       console.log("Video segments downloaded:", segmentsData);
 
@@ -435,7 +435,7 @@ export const testStepFetch = inngest.createFunction(
   async ({ event, step }) => {
     const { testId } = event.data;
 
-    const supabase = createServiceClient();
+    // const supabase = createServiceClient();
 
     // Debug the environment variable
     console.log("YouTube downloader endpoint:", process.env.NEXT_PUBLIC_YOUTUBE_DOWNLOADER_ENDPOINT);
