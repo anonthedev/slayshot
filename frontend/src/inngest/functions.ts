@@ -85,18 +85,19 @@ export const clipVideo = inngest.createFunction(
           s3_key: uploadedFile.s3_key,
         };
       }
-
-      await step.fetch(`${process.env.CLIPPER_ENDPOINT}`, {
-        method: "POST",
-        body: JSON.stringify(payload),
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.MODAL_AUTH_TOKEN}`,
-        },
+      await step.run("clip-video", async () => {
+        await step.fetch(`${process.env.CLIPPER_ENDPOINT}`, {
+          method: "POST",
+          body: JSON.stringify(payload),
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.MODAL_AUTH_TOKEN}`,
+          },
+        });
       });
 
       // if (!clipGenerate) {
-      //   const clipRes = 
+      //   const clipRes =
       //   if (!clipRes.ok) {
       //     const errorText = await clipRes.text();
       //     clipGenerate = false;
@@ -435,51 +436,32 @@ export const testStepFetch = inngest.createFunction(
   async ({ event, step }) => {
     const { testId } = event.data;
 
-    // const supabase = createServiceClient();
-
     // Debug the environment variable
-    console.log("YouTube downloader endpoint:", process.env.NEXT_PUBLIC_YOUTUBE_DOWNLOADER_ENDPOINT);
-    
+    console.log(
+      "YouTube downloader endpoint:",
+      process.env.NEXT_PUBLIC_YOUTUBE_DOWNLOADER_ENDPOINT
+    );
+
     const healthUrl = `${process.env.NEXT_PUBLIC_YOUTUBE_DOWNLOADER_ENDPOINT}/health`;
     console.log("Full health URL:", healthUrl);
 
-    // Step 1: Fetch the health endpoint
     console.log("About to call step.fetch...");
-    const healthResponse = await step.fetch(healthUrl, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
-    console.log("step.fetch completed, response status:", healthResponse.status);
-
-    if (!healthResponse.ok) {
-      throw new Error(`Health check failed: ${healthResponse.status} - ${healthResponse.statusText}`);
-    }
-
-    const healthData = await healthResponse.json();
-    console.log("Health check response:", healthData);
-
-    // Add a step.run immediately after to compare how they appear in traces
-    await step.run("log-fetch-result", async () => {
-      console.log("This step.run is right after step.fetch");
-      return { fetchStatus: healthResponse.status, timestamp: new Date().toISOString() };
+    const healthResponse = await step.run("health-check-request", async () => {
+      return await step.fetch(healthUrl, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
     });
 
-    // Step 2: Use the response data in a delayed step
     const delayedResult = await step.run("delayed-processing", async () => {
-      console.log(`Processing health data: ${healthData.status} at ${healthData.timestamp}`);
-      
-      // Create a promise that resolves after 10 seconds
-      await new Promise(resolve => setTimeout(resolve, 20000));
-      
+      await new Promise((resolve) => setTimeout(resolve, 20000));
+
       return {
         testId,
-        healthStatus: healthData.status,
         processedAt: new Date().toISOString(),
-        serviceInfo: healthData.service,
-        originalTimestamp: healthData.timestamp,
-        message: "Test completed after 10 second delay"
+        message: "Test completed after 10 second delay",
       };
     });
 

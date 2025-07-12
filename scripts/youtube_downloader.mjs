@@ -567,7 +567,4 @@ app.listen(PORT, () => {
   console.log(`   POST /viral-moments   - {transcript_s3_key, uuid} → Viral moments detection`);
   console.log(`   POST /download-segments - {youtubeUrl, segments, uuid} → Download video segments in parallel`);
   console.log(`   GET  /health          - Health check`);
-  console.log(`💡 Using WebM format for faster processing and smaller files`);
-  console.log(`🧠 Viral moments powered by Gemini 2.5 Flash`);
-  console.log(`🎬 Video segments use optimized format with PARALLEL downloads for maximum speed`);
 });
