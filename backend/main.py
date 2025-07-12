@@ -345,8 +345,6 @@ def process_clip(base_dir: str, original_video_path: str, uuid_or_s3_key: str, s
     
     print(f"Output s3 key: {output_s3_key}")
     
-    print(f"Transcript: {transcript}")
-    
     clip_dir = base_dir / clip_name
     clip_dir.mkdir(parents=True, exist_ok=True)
     
@@ -407,7 +405,7 @@ def process_clip(base_dir: str, original_video_path: str, uuid_or_s3_key: str, s
     s3_client = boto3.client("s3")
     s3_client.upload_file(subtitle_output_path, "omenclip", output_s3_key)
 
-@app.cls(gpu="L40S", timeout=900, retries=0, scaledown_window=20, secrets=[modal.Secret.from_name("omen-clipper-secret")], volumes={mount_path: volume})
+@app.cls(gpu="L40S", timeout=3600, retries=0, scaledown_window=20, secrets=[modal.Secret.from_name("omen-clipper-secret")], volumes={mount_path: volume})
 class OmenClipper:
     @modal.enter()
     def load_model(self):
@@ -592,7 +590,6 @@ Return exactly:
 
     The transcript is as follows:\n\n""" + str(transcript))
         
-        print(response.text)
         return response.text
         
     
@@ -698,7 +695,7 @@ Return exactly:
         
         # Process clips in parallel with max 2 workers
         processed_clips = []
-        clip_data_list = list(enumerate(clip_moments))
+        clip_data_list = list(enumerate(clip_moments[:5]))
         
         if clip_data_list:
             print(f"Starting concurrent processing of {len(clip_data_list)} clips with max 2 workers...")
@@ -889,7 +886,7 @@ def main():
     
     # Example of using a YouTube URL with time range
     payload={
-        "youtube_url": "https://www.youtube.com/watch?v=2YedBt_kkHY",
+        "youtube_url": "https://www.youtube.com/watch?v=zmIiH9tLwX8",
         "uuid": "010882aa-c6ee-4b10-9ee9-03fba1199eff",  # Required for YouTube URLs
         # "start_time": 60,   # Start 60 seconds in
         # "end_time": 300     # End at 300 seconds (4 minute clip)
