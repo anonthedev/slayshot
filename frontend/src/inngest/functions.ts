@@ -446,7 +446,7 @@ export const testStepFetch = inngest.createFunction(
     console.log("Full health URL:", healthUrl);
 
     console.log("About to call step.fetch...");
-    const healthResponse = await step.run("health-check-request", async () => {
+    await step.run("health-check-request", async () => {
       return await step.fetch(healthUrl, {
         method: "GET",
         headers: {
