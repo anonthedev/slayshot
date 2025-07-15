@@ -559,7 +559,7 @@ class OmenClipper:
         # model_list = self.gemini_client.list_models()
         # print("Model list:")
         # print(model_list)
-        response = self.gemini_client.models.generate_content(model="gemini-2.5-flash",  contents="""You are given a transcript of a podcast video, where each word includes its start and end time in seconds. Your goal is to extract question-answer clips from this transcript.
+        response = self.gemini_client.models.generate_content(model="gemini-1.5-flash",  contents="""You are given a transcript of a podcast video, where each word includes its start and end time in seconds. Your goal is to extract question-answer clips from this transcript.
 
 Extraction Criteria:
 
@@ -672,16 +672,66 @@ Return exactly:
         is_youtube_processing = request.youtube_url is not None
         uuid_or_s3_key = request.uuid if is_youtube_processing else s3_key
         
-        for index, moment in enumerate(clip_moments):
-            if "start" in moment and "end" in moment:
-                print("Processing clip"+str(index)+" form "+str(moment["start"]) + " to " +str(moment["end"]))
-                process_clip(base_dir, video_path, uuid_or_s3_key, moment["start"], moment["end"], index, transcript, is_uuid=is_youtube_processing)
+        def process_single_clip(clip_data):
+            """Process a single clip - used for concurrent execution"""
+            index, moment = clip_data
+            
+            try:
+                if "start" in moment and "end" in moment:
+                    print(f"Processing clip {index} from {moment['start']} to {moment['end']}")
+                    process_clip(base_dir, video_path, uuid_or_s3_key, moment["start"], moment["end"], index, transcript, is_uuid=is_youtube_processing)
+                    
+                    processed_clip = {
+                        "index": index,
+                        "start_time": moment["start"],
+                        "end_time": moment["end"]
+                    }
+                    
+                    print(f"Successfully processed clip {index}")
+                    return processed_clip
+                else:
+                    print(f"Skipping clip {index} - missing start or end time")
+                    return None
+                    
+            except Exception as e:
+                print(f"Error processing clip {index}: {str(e)}")
+                raise Exception(f"Failed to process clip {index}: {str(e)}")
+        
+        # Process clips with parallelization (max 2 at once)
+        processed_clips = []
+        valid_clip_moments = [(index, moment) for index, moment in enumerate(clip_moments) if "start" in moment and "end" in moment]
+        
+        if valid_clip_moments:
+            print(f"Starting concurrent processing of {len(valid_clip_moments)} clips with max 2 workers...")
+            
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                # Submit all clips for processing
+                future_to_clip = {
+                    executor.submit(process_single_clip, clip_data): clip_data[0] 
+                    for clip_data in valid_clip_moments
+                }
+                
+                # Collect results as they complete
+                for future in as_completed(future_to_clip):
+                    clip_index = future_to_clip[future]
+                    try:
+                        processed_clip = future.result()
+                        if processed_clip:  # Only add if not None (valid clip)
+                            processed_clips.append(processed_clip)
+                        print(f"Completed clip {clip_index}")
+                    except Exception as e:
+                        print(f"Clip {clip_index} failed with error: {str(e)}")
+                        raise e
+            
+            # Sort processed clips by index to maintain order
+            processed_clips.sort(key=lambda x: x["index"])
+            print(f"All clips processed successfully!")
         
         if base_dir.exists():
             print(f"Cleaning up temp dir {base_dir}")
             shutil.rmtree(base_dir, ignore_errors=True)
             
-        return {"success": True, "clip_count": min(len(clip_moments), 3), "run_id": run_id}
+        return {"success": True, "clip_count": len(processed_clips), "run_id": run_id, "processed_clips": processed_clips}
 
     @modal.fastapi_endpoint(method="POST")
     def transcribe_audio(self, request: TranscribeAudioRequest, token: HTTPAuthorizationCredentials = Depends(auth_scheme)):
@@ -840,10 +890,10 @@ def main():
     
     # Example of using a YouTube URL with time range
     payload={
-        "youtube_url": "https://www.youtube.com/watch?v=dh_TCemAVU4",
+        "youtube_url": "https://www.youtube.com/watch?v=qP0zM0bq3eo",
         "uuid": "010882aa-c6ee-4b10-9ee9-03fba1199eff",  # Required for YouTube URLs
         # "start_time": 60,   # Start 60 seconds in
-        # "end_time": 300     # End at 300 seconds (4 minute clip)
+        # "end_time": 600     # End at 300 seconds (4 minute clip)
     #     # Alternatively, you can use an S3 key (no uuid needed)
     #     "s3_key": "test1/input3med.mp4"
     }

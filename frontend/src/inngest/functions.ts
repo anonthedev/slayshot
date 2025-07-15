@@ -435,20 +435,7 @@ export const testStepFetch = inngest.createFunction(
   { event: "test-step-fetch-events" },
   async ({ event, step }) => {
     const { testId } = event.data;
-
-    // Debug the environment variable
-    console.log(
-      "YouTube downloader endpoint:",
-      process.env.NEXT_PUBLIC_YOUTUBE_DOWNLOADER_ENDPOINT
-    );
-
-    const healthUrl = `${process.env.NEXT_PUBLIC_YOUTUBE_DOWNLOADER_ENDPOINT}/health`;
-    console.log("Full health URL:", healthUrl);
-
-    console.log("About to call step.fetch...");
-    // await step.run("health-check-request", async () => {
-    //   return 
-    // });
+    const healthUrl = `http://omenclip.vercel.app/api/health`;
 
     const healthCheckResult = await step.fetch(healthUrl, {
       method: "GET",
@@ -456,8 +443,9 @@ export const testStepFetch = inngest.createFunction(
         "Content-Type": "application/json",
       },
     });
+    const healthCheckResultJson = await healthCheckResult.json();
 
-    console.log("Health check result:", healthCheckResult);
+    console.log("Health check result:", healthCheckResultJson.message);
 
     const delayedResult = await step.run("delayed-processing", async () => {
       await new Promise((resolve) => setTimeout(resolve, 20000));
@@ -465,7 +453,8 @@ export const testStepFetch = inngest.createFunction(
       return {
         testId,
         processedAt: new Date().toISOString(),
-        message: "Test completed after 10 second delay",
+        message: "Test completed after 20 second delay",
+        healthCheckResult: healthCheckResultJson.message,
       };
     });
 
