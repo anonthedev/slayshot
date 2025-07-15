@@ -26,7 +26,7 @@ export const clipVideo = inngest.createFunction(
       limit: 1,
       key: "event.data.userId",
     },
-    retries: 1,
+    retries: 0,
   },
   { event: "clip-video-events" },
   async ({ event, step }) => {
@@ -446,14 +446,18 @@ export const testStepFetch = inngest.createFunction(
     console.log("Full health URL:", healthUrl);
 
     console.log("About to call step.fetch...");
-    await step.run("health-check-request", async () => {
-      return await step.fetch(healthUrl, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
+    // await step.run("health-check-request", async () => {
+    //   return 
+    // });
+
+    const healthCheckResult = await step.fetch(healthUrl, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
     });
+
+    console.log("Health check result:", healthCheckResult);
 
     const delayedResult = await step.run("delayed-processing", async () => {
       await new Promise((resolve) => setTimeout(resolve, 20000));
