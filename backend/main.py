@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import timedelta
 import json
 import os
 import pathlib
@@ -54,6 +55,11 @@ image = (modal.Image
          .run_commands([
              "mkdir -p /usr/share/fonts/truetype/custom", 
              "wget -O /usr/share/fonts/truetype/custom/Anton-Regular.ttf https://raw.githubusercontent.com/google/fonts/main/ofl/anton/Anton-Regular.ttf", 
+             "fc-cache -f -v"
+            ])
+            .run_commands([
+             "mkdir -p /usr/share/fonts/truetype/custom", 
+             "wget -O /usr/share/fonts/truetype/custom/Montserrat-Bold.ttf https://github.com/JulietaUla/Montserrat/raw/refs/heads/master/fonts/ttf/Montserrat-Bold.ttf", 
              "fc-cache -f -v"
             ])
         .add_local_dir("asd", "/asd", copy=True)
@@ -159,87 +165,161 @@ def burn_subtitles(transcript: list, clip_start: float, clip_end: float, clip_vi
     temp_dir = os.path.dirname(output_path)
     subtitle_path = os.path.join(temp_dir, "temp_subtitles.ass")
     
-    clip_segements = [segment for segment in transcript
-                        if segment.get("start") is not None
-                        and segment.get("end") is not None
-                        and segment.get("end") > clip_start
-                        and segment.get("start") < clip_end
-                    ]
+    clip_segments = [segment for segment in transcript
+                     if segment.get("start") is not None
+                     and segment.get("end") is not None
+                     and segment.get("end") > clip_start
+                     and segment.get("start") < clip_end]
+
+    print(f"[DEBUG] Transcript has {len(transcript)} segments")
+    print(f"[DEBUG] Filtered transcript has {len(clip_segments)} segments for clip {clip_start:.2f}s-{clip_end:.2f}s")
+
     subtitles = []
     current_words = []
-    
     current_start = None
     current_end = None
-    
-    print(f"[DEBUG] Transcript has {len(transcript)} segments")
-    print(f"[DEBUG] Filtered transcript has {len(clip_segements)} segments for clip {clip_start:.2f}s-{clip_end:.2f}s")
-    
-    for segment in clip_segements:
+
+    for segment in clip_segments:
         word = segment.get("word", "").strip()
         seg_start = segment.get("start")
         seg_end = segment.get("end")
-        
+
         if not word or seg_start is None or seg_end is None:
             continue
-        
+
         start_rel = max(0.0, seg_start - clip_start)
-        end_rel =  max(0.0, seg_end - clip_start)
-        
+        end_rel = max(0.0, seg_end - clip_start)
+
         if end_rel <= 0:
             continue
-        
+
         if not current_words:
             current_start = start_rel
             current_end = end_rel
-            current_words = [word]
+            current_words = [segment]
         elif len(current_words) >= max_words:
-            subtitles.append((current_start, current_end, ' '.join(current_words)))
-            current_words = [word]
+            subtitles.append((current_start, current_end, current_words))
+            current_words = [segment]
             current_start = start_rel
             current_end = end_rel
         else:
-            current_words.append(word)
+            current_words.append(segment)
             current_end = end_rel
-            
+
     if current_words:
-        subtitles.append((current_start, current_end, ' '.join(current_words)))
-    
+        subtitles.append((current_start, current_end, current_words))
+
     print(f"[DEBUG] Created {len(subtitles)} subtitle lines")
-    
+
+    # Create subtitle object
     subs = pysubs2.SSAFile()
-    
     subs.info["WrapStyle"] = 0
     subs.info["ScaledBorderAndShadow"] = "yes"
     subs.info["PlayResX"] = 1080
     subs.info["PlayResY"] = 1920
     subs.info["ScriptType"] = "v4.00+"
-    
-    style_name = "Default"
-    new_style = pysubs2.SSAStyle()
-    new_style.fontname = "Anton"
-    new_style.fontsize = 140
-    new_style.primarycolor = pysubs2.Color(255, 255, 255)
-    new_style.outline = 2.0
-    new_style.shadow = 2.0
-    new_style.shadowcolor = pysubs2.Color(0,0,0,128)
-    new_style.alignment = 2
-    new_style.marginl = 50
-    new_style.marginr = 50
-    new_style.marginv = 50
-    new_style.spacing = 0.0
-    
-    subs.styles[style_name] = new_style
-    
-    for i, (start, end, text) in enumerate(subtitles):
-        start_time = pysubs2.make_time(s=start)
-        end_time = pysubs2.make_time(s=end)
-        line = pysubs2.SSAEvent(start=start_time, end=end_time, text=text, style=style_name)
-        subs.events.append(line)
-    
+
+    # Define normal style
+    base_style = pysubs2.SSAStyle()
+    base_style.fontname = "Montserrat"
+    base_style.fontsize = 100  # Reduced from 140 to prevent 2+ lines
+    base_style.primarycolor = pysubs2.Color(255, 255, 255)  # white
+    base_style.outline = 2.0
+    base_style.shadow = 2.0
+    base_style.shadowcolor = pysubs2.Color(0, 0, 0, 128)
+    base_style.alignment = 2  # bottom-center
+    base_style.marginl = 50
+    base_style.marginr = 50
+    base_style.marginv = 480
+    base_style.spacing = 0.0
+
+    subs.styles["Default"] = base_style
+
+    # Create individual subtitle events for each word with precise timing
+    for start, end, word_segments in subtitles:
+        # Create a timeline of events for this subtitle group
+        timeline_events = []
+        
+        # Add the start of the subtitle (all words in white)
+        if word_segments:
+            timeline_events.append({
+                'time': start,
+                'type': 'start',
+                'active_word_index': -1  # No active word yet
+            })
+        
+        # Add events for each word becoming active
+        for i, seg in enumerate(word_segments):
+            word = seg["word"].strip()
+            if not word:
+                continue
+            timeline_events.append({
+                'time': seg["start"],
+                'type': 'word_start',
+                'active_word_index': i
+            })
+            timeline_events.append({
+                'time': seg["end"],
+                'type': 'word_end',
+                'active_word_index': i
+            })
+        
+        # Add the end of the subtitle
+        if word_segments:
+            timeline_events.append({
+                'time': end,
+                'type': 'end',
+                'active_word_index': len(word_segments)
+            })
+        
+        # Sort timeline events by time
+        timeline_events.sort(key=lambda x: x['time'])
+        
+        # Create subtitle events for each time segment
+        for i in range(len(timeline_events) - 1):
+            current_event = timeline_events[i]
+            next_event = timeline_events[i + 1]
+            
+            # Skip if no time difference
+            if next_event['time'] <= current_event['time']:
+                continue
+            
+            # Build the text for this time segment
+            text_parts = []
+            active_word_index = current_event['active_word_index']
+            
+            for j, seg in enumerate(word_segments):
+                word = seg["word"].strip()
+                if not word:
+                    continue
+                
+                if j == active_word_index:
+                    # This word is currently being spoken - green and slightly larger
+                    text_parts.append(f"{{\\1c&H00FF00&\\fs120}}{word}")
+                else:
+                    # This word is not being spoken - white and normal size
+                    text_parts.append(f"{{\\1c&HFFFFFF&\\fs100}}{word}")
+            
+            if text_parts:
+                subtitle_text = " ".join(text_parts)
+                
+                line = pysubs2.SSAEvent(
+                    start=pysubs2.make_time(s=current_event['time']),
+                    end=pysubs2.make_time(s=next_event['time']),
+                    text=subtitle_text,
+                    style="Default"
+                )
+                subs.events.append(line)
+
+    # Save ASS file
     subs.save(subtitle_path)
-    
-    ffmpeg_cmd = (f"ffmpeg -y -i {clip_video_path} -vf \"ass={subtitle_path}\" " f"-c:v h264 -preset fast -crf 23 {output_path}")
-    
+
+    # Burn subtitles into video using FFmpeg
+    ffmpeg_cmd = (
+        f"ffmpeg -y -i {clip_video_path} -vf \"ass={subtitle_path}\" "
+        f"-c:v h264 -preset fast -crf 23 {output_path}"
+    )
+
     subprocess.run(ffmpeg_cmd, shell=True, check=True)
         
   
@@ -430,7 +510,9 @@ class OmenClipper:
             temp_dir = os.path.dirname(output_path)
             temp_file = os.path.join(temp_dir, f"temp_full_video_{uuid.uuid4().hex}.mp4")
 
-            # Base yt-dlp command
+            def seconds_to_hhmmss(seconds):
+                return str(timedelta(seconds=int(seconds)))
+            
             command = [
                 "yt-dlp",
                 "--no-warnings",
@@ -442,7 +524,9 @@ class OmenClipper:
 
             # Add time range support
             if start_time is not None or end_time is not None:
-                section = f"*{start_time or 0}-{end_time}" if end_time else f"*{start_time}-"
+                start_str = seconds_to_hhmmss(start_time or 0)
+                end_str = seconds_to_hhmmss(end_time) if end_time else ''
+                section = f"*{start_str}-{end_str}"
                 command += ["--download-sections", section]
 
             command.append(youtube_url)
@@ -556,10 +640,8 @@ class OmenClipper:
                 shutil.rmtree(temp_dir, ignore_errors=True)
     
     def identify_viral_moments(self, transcript: dict):
-        # model_list = self.gemini_client.list_models()
-        # print("Model list:")
-        # print(model_list)
-        response = self.gemini_client.models.generate_content(model="gemini-1.5-flash",  contents="""You are given a transcript of a podcast video, where each word includes its start and end time in seconds. Your goal is to extract question-answer clips from this transcript.
+        prompt = """
+You are given a transcript of a podcast video, where each word includes its start and end time in seconds. Your goal is to extract question-answer clips from this transcript.
 
 Extraction Criteria:
 
@@ -592,9 +674,17 @@ If no valid clips are found:
 Return exactly:
 []
 
-    The transcript is as follows:\n\n""" + str(transcript))
+The transcript is as follows:\n\n""" + str(transcript)
+        response = self.gemini_client.models.generate_content(model="gemini-2.5-flash",  contents=prompt)
         
         return response.text
+
+        # response = self.openai_client.responses.create(
+        #     model="gpt-4o",
+        #     input=prompt
+        # )
+        
+        # return response.output_text
         
     
     @modal.fastapi_endpoint(method="POST")
@@ -699,7 +789,7 @@ Return exactly:
         
         # Process clips with parallelization (max 2 at once)
         processed_clips = []
-        valid_clip_moments = [(index, moment) for index, moment in enumerate(clip_moments) if "start" in moment and "end" in moment]
+        valid_clip_moments = [(index, moment) for index, moment in enumerate(clip_moments[:1]) if "start" in moment and "end" in moment]
         
         if valid_clip_moments:
             print(f"Starting concurrent processing of {len(valid_clip_moments)} clips with max 2 workers...")
@@ -890,12 +980,12 @@ def main():
     
     # Example of using a YouTube URL with time range
     payload={
-        "youtube_url": "https://www.youtube.com/watch?v=qP0zM0bq3eo",
-        "uuid": "010882aa-c6ee-4b10-9ee9-03fba1199eff",  # Required for YouTube URLs
-        # "start_time": 60,   # Start 60 seconds in
-        # "end_time": 600     # End at 300 seconds (4 minute clip)
-    #     # Alternatively, you can use an S3 key (no uuid needed)
-    #     "s3_key": "test1/input3med.mp4"
+        # "youtube_url": "https://www.youtube.com/watch?v=qP0zM0bq3eo",
+        # "uuid": "010882aa-c6ee-4b10-9ee9-03fba1199eff",
+        # "start_time": 0,
+        # "end_time": 200
+
+        "s3_key": "test1/input1.mp4"
     }
     
     # Example of using the audio transcription endpoint:

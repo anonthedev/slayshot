@@ -26,7 +26,7 @@ import { useState, useRef } from "react";
 import { generateUploadUrl } from "@/actions/s3";
 import { toast } from "sonner";
 import { processVideo } from "@/actions/generations";
-import { processYouTubeVideo } from "@/actions/youtube";
+import YouTubeVideoModal from "./YouTubeVideoModal";
 import {
   Table,
   TableBody,
@@ -54,7 +54,7 @@ export default function Dashboard({
   const [uploading, setUploading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [youtubeUrl, setYoutubeUrl] = useState("");
-  const [processingYoutube, setProcessingYoutube] = useState(false);
+  const [isYouTubeModalOpen, setIsYouTubeModalOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
@@ -121,33 +121,26 @@ export default function Dashboard({
     }
   };
 
-  const handleYouTubeSubmit = async () => {
-    if (!youtubeUrl.trim()) return;
-
-    setProcessingYoutube(true);
-
-    try {
-      const result = await processYouTubeVideo(youtubeUrl);
-      console.log("YouTube process result:", result);
-
-      setYoutubeUrl("");
-
-      toast.success("YouTube video submitted successfully", {
-        description:
-          "Your YouTube video has been scheduled for processing. Check the status below.",
-        duration: 5000,
-      });
-
-      handleRefresh();
-    } catch (error) {
-      console.error("YouTube processing error:", error);
-      toast.error("YouTube processing failed", {
-        description:
-          "There was a problem processing your YouTube video. Please try again.",
-      });
-    } finally {
-      setProcessingYoutube(false);
+  const handleYouTubeSubmit = () => {
+    if (!youtubeUrl.trim()) {
+      toast.error("Please enter a YouTube URL");
+      return;
     }
+
+    // Basic validation for YouTube URL
+    const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)/;
+    if (!youtubeRegex.test(youtubeUrl)) {
+      toast.error("Please enter a valid YouTube URL");
+      return;
+    }
+
+    setIsYouTubeModalOpen(true);
+  };
+
+  const handleCloseYouTubeModal = () => {
+    setIsYouTubeModalOpen(false);
+    setYoutubeUrl("");
+    handleRefresh();
   };
 
   const handleRowClick = (item: { id: string; clipsCount: number }) => {
@@ -233,21 +226,12 @@ export default function Dashboard({
                   />
                   <Button
                     size="lg"
-                    disabled={!youtubeUrl.trim() || processingYoutube}
+                    disabled={!youtubeUrl.trim()}
                     onClick={handleYouTubeSubmit}
                     className="px-8 gap-2"
                   >
-                    {processingYoutube ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        <Youtube className="h-4 w-4" />
-                        Process
-                      </>
-                    )}
+                    <Youtube className="h-4 w-4" />
+                    Get Details
                   </Button>
                 </div>
               </div>
@@ -382,6 +366,12 @@ export default function Dashboard({
           )}
         </div>
       </div>
+
+      <YouTubeVideoModal
+        isOpen={isYouTubeModalOpen}
+        onClose={handleCloseYouTubeModal}
+        videoUrl={youtubeUrl}
+      />
     </div>
   );
 }

@@ -26,15 +26,12 @@ export const clipVideo = inngest.createFunction(
       limit: 1,
       key: "event.data.userId",
     },
-    retries: 0,
+    retries: 1,
   },
   { event: "clip-video-events" },
   async ({ event, step }) => {
-    const { uploadedFileId, userId, youtubeUrl, uuid } = event.data;
+    const { uploadedFileId, userId, youtubeUrl, uuid, startTime, endTime } = event.data;
 
-    // let clipGenerate = false;
-
-    // Use service role client instead of user session
     const supabase = createServiceClient();
 
     const uploadedFile = await step.run("get-uploaded-file", async () => {
@@ -78,7 +75,10 @@ export const clipVideo = inngest.createFunction(
         payload = {
           youtube_url: youtubeUrl,
           uuid: uuid,
+          start_time: startTime,
+          end_time: endTime,
         };
+        console.log("Payload:", payload);
       } else {
         // S3 key processing (existing functionality)
         payload = {
@@ -93,37 +93,13 @@ export const clipVideo = inngest.createFunction(
           Authorization: `Bearer ${process.env.MODAL_AUTH_TOKEN}`,
         },
       });
-
-      // if (!clipGenerate) {
-      //   const clipRes =
-      //   if (!clipRes.ok) {
-      //     const errorText = await clipRes.text();
-      //     clipGenerate = false;
-      //   }
-      //   console.log("Clip generation completed");
-      //   clipGenerate = true;
-      // }
-
-      // await step.run("clip-video", async () => {
-      //   const response = await fetch(`${process.env.CLIPPER_ENDPOINT}`, {
-      //     method: "POST",
-      //     body: JSON.stringify(payload),
-      //     headers: {
-      //       "Content-Type": "application/json",
-      //       Authorization: `Bearer ${process.env.MODAL_AUTH_TOKEN}`,
-      //     },
-      //   });
-      // });
     }
 
     const result = await step.run("send-clip-to-db", async () => {
-      // Determine folder prefix based on input type
       let folderPrefix;
       if (youtubeUrl && uuid) {
-        // For YouTube processing, use the provided UUID
         folderPrefix = uuid;
       } else {
-        // For S3 processing, use the existing logic
         folderPrefix = uploadedFile.s3_key.split("/")[0]!;
       }
 
@@ -156,12 +132,9 @@ export const clipVideo = inngest.createFunction(
         await supabase
           .from("users")
           .update({
-            credits: Math.max(
-              0,
-              uploadedFile.users.credits - result.clipsFound
-            ),
+            credits: uploadedFile.users.credits - Math.floor((endTime - startTime) / 60)
           })
-          .eq("id", userId); // Use the userId from event data
+          .eq("id", userId);
       });
       await step.run("update-to-processed", async () => {
         const { error } = await supabase

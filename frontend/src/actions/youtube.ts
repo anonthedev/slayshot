@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth";
 import { supabaseClient } from "@/lib/supabase";
 import { v4 as uuidv4 } from "uuid";
 
-export async function processYouTubeVideo(youtubeUrl: string) {
+export async function processYouTubeVideo(youtubeUrl: string, startTime: number, endTime: number) {
   const session = await auth();
   if (!session) throw new Error("Unauthorized");
 
@@ -27,10 +27,13 @@ export async function processYouTubeVideo(youtubeUrl: string) {
     .from("uploaded_files")
     .insert({
       user_id: session.user.id,
-      s3_key: s3Key,  // Set s3_key upfront with UUID structure
+      s3_key: s3Key,
       title: videoTitle,
       status: "processing",
       uploaded: true,
+      start_time: startTime,
+      end_time: endTime,
+      source_url: youtubeUrl
     })
     .select("id")
     .single();
@@ -56,7 +59,9 @@ export async function processYouTubeVideo(youtubeUrl: string) {
       uploadedFileId: uploadedFileDBRecord.id,
       userId: session.user.id, 
       youtubeUrl: youtubeUrl,
-      uuid: sessionUuid
+      uuid: sessionUuid,
+      startTime,
+      endTime,
     }
   });
 
