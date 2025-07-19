@@ -85,15 +85,13 @@ export const clipVideo = inngest.createFunction(
           s3_key: uploadedFile.s3_key,
         };
       }
-      await step.run("clip-video", async () => {
-        await step.fetch(`${process.env.CLIPPER_ENDPOINT}`, {
-          method: "POST",
-          body: JSON.stringify(payload),
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${process.env.MODAL_AUTH_TOKEN}`,
-          },
-        });
+      await step.fetch(`${process.env.CLIPPER_ENDPOINT}`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.MODAL_AUTH_TOKEN}`,
+        },
       });
 
       // if (!clipGenerate) {
@@ -424,18 +422,10 @@ export const clipYouTubeVideoWorkflow = inngest.createFunction(
 );
 
 export const testStepFetch = inngest.createFunction(
-  {
-    id: "test-step-fetch",
-    concurrency: {
-      limit: 1,
-      key: "event.data.testId",
-    },
-    retries: 1,
-  },
+  { id: "test-step-fetch" },
   { event: "test-step-fetch-events" },
-  async ({ event, step }) => {
-    const { testId } = event.data;
-    const healthUrl = `http://omenclip.vercel.app/api/health`;
+  async ({ step }) => {
+    const healthUrl = `http://localhost:3000/api/health`;
 
     const healthCheckResult = await step.fetch(healthUrl, {
       method: "GET",
@@ -443,23 +433,14 @@ export const testStepFetch = inngest.createFunction(
         "Content-Type": "application/json",
       },
     });
-    const healthCheckResultJson = await healthCheckResult.json();
 
-    console.log("Health check result:", healthCheckResultJson.message);
-
-    const delayedResult = await step.run("delayed-processing", async () => {
-      await new Promise((resolve) => setTimeout(resolve, 20000));
-
-      return {
-        testId,
-        processedAt: new Date().toISOString(),
-        message: "Test completed after 20 second delay",
-        healthCheckResult: healthCheckResultJson.message,
-      };
+    const loggingHealth = await step.run("logging-health", async () => {
+      const healthCheckResultJson = await healthCheckResult.json();
+      console.log("Health check result:", healthCheckResultJson.message);
+      return healthCheckResultJson;
     });
 
-    console.log("Test function completed:", delayedResult);
-    return delayedResult;
+    return loggingHealth;
   }
 );
 
