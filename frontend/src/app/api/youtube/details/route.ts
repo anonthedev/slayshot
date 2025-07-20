@@ -12,7 +12,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Path to cookies.txt inside the .secure folder
-const cookiesPath = path.resolve(__dirname, '../../../.secure/cookies.txt');
+// const cookiesPath = path.resolve(__dirname, '../../../.secure/cookies.txt');
 
 export async function POST(request: NextRequest) {
   try {
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
 }
 
 async function getVideoMetadata(videoUrl: string, timeoutMs = 25000) {
-  const command = `yt-dlp -j --no-playlist --skip-download --cookies "${cookiesPath}" "${videoUrl}"`;
+  const command = `yt-dlp -j --no-playlist --skip-download "${videoUrl}"`;
 
   try {
     const { stdout } = await execAsync(command, { timeout: timeoutMs });
