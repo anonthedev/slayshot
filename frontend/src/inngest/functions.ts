@@ -57,7 +57,7 @@ export const clipVideo = inngest.createFunction(
       return data as unknown as UploadedFileType;
     });
 
-    if (uploadedFile.users.credits > 0) {
+    if (uploadedFile.users.credits >= Math.floor((endTime - startTime) / 60)) {
       await step.run("update-to-processing", async () => {
         const { error } = await supabase
           .from("uploaded_files")

@@ -50,13 +50,14 @@ async function getVideoMetadata(videoUrl: string, timeoutMs = 25000) {
   try {
     const { stdout } = await execAsync(command, { timeout: timeoutMs });
     return JSON.parse(stdout);
-  } catch (err: any) {
+  } catch (err) {
+    //@ts-expect-error - err is not typed
     console.error('yt-dlp error:', err.stderr || err.message);
     return null;
   }
 }
-
-function getBestThumbnail(thumbnails: any[]): string | null {
+//@ts-expect-error - thumbnails is not typed
+function getBestThumbnail(thumbnails): string | null {
   if (!Array.isArray(thumbnails) || thumbnails.length === 0) return null;
   return thumbnails[thumbnails.length - 1]?.url || null;
 }

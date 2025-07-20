@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Separator } from './ui/separator';
-import { toast } from 'sonner';
-import { X, Play, Clock, Eye, ThumbsUp, Calendar } from 'lucide-react';
-import { processYouTubeVideo } from '@/actions/youtube';
+import { useState, useEffect } from "react";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Separator } from "./ui/separator";
+import { toast } from "sonner";
+import { X, Play, Clock } from "lucide-react";
+import { processYouTubeVideo } from "@/actions/youtube";
 
 interface YouTubeVideoDetails {
   id: string;
@@ -29,14 +29,20 @@ interface YouTubeVideoModalProps {
   videoUrl: string;
 }
 
-export default function YouTubeVideoModal({ isOpen, onClose, videoUrl }: YouTubeVideoModalProps) {
-  const [videoDetails, setVideoDetails] = useState<YouTubeVideoDetails | null>(null);
+export default function YouTubeVideoModal({
+  isOpen,
+  onClose,
+  videoUrl,
+}: YouTubeVideoModalProps) {
+  const [videoDetails, setVideoDetails] = useState<YouTubeVideoDetails | null>(
+    null
+  );
   const [loading, setLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [startTime, setStartTime] = useState(0);
   const [endTime, setEndTime] = useState(0);
-  const [startTimeInput, setStartTimeInput] = useState('0:00');
-  const [endTimeInput, setEndTimeInput] = useState('0:00');
+  const [startTimeInput, setStartTimeInput] = useState("0:00");
+  const [endTimeInput, setEndTimeInput] = useState("0:00");
 
   useEffect(() => {
     if (isOpen && videoUrl) {
@@ -54,24 +60,26 @@ export default function YouTubeVideoModal({ isOpen, onClose, videoUrl }: YouTube
   const fetchVideoDetails = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/youtube/details', {
-        method: 'POST',
+      const response = await fetch("/api/youtube/details", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ url: videoUrl }),
       });
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to fetch video details');
+        throw new Error(error.error || "Failed to fetch video details");
       }
 
       const data = await response.json();
       setVideoDetails(data);
     } catch (error) {
-      console.error('Error fetching video details:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to fetch video details');
+      console.error("Error fetching video details:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to fetch video details"
+      );
     } finally {
       setLoading(false);
     }
@@ -81,15 +89,17 @@ export default function YouTubeVideoModal({ isOpen, onClose, videoUrl }: YouTube
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
-    
+
     if (hours > 0) {
-      return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+      return `${hours}:${minutes.toString().padStart(2, "0")}:${secs
+        .toString()
+        .padStart(2, "0")}`;
     }
-    return `${minutes}:${secs.toString().padStart(2, '0')}`;
+    return `${minutes}:${secs.toString().padStart(2, "0")}`;
   };
 
   const parseTimeInput = (timeString: string): number => {
-    const parts = timeString.split(':').map(Number);
+    const parts = timeString.split(":").map(Number);
     if (parts.length === 2) {
       return parts[0] * 60 + parts[1];
     } else if (parts.length === 3) {
@@ -114,25 +124,26 @@ export default function YouTubeVideoModal({ isOpen, onClose, videoUrl }: YouTube
     if (!videoDetails) return;
 
     if (startTime >= endTime) {
-      toast.error('Start time must be less than end time');
+      toast.error("Start time must be less than end time");
       return;
     }
 
     if (startTime < 0 || endTime > videoDetails.duration) {
-      toast.error('Time range must be within video duration');
+      toast.error("Time range must be within video duration");
       return;
     }
 
     setProcessing(true);
     try {
-      
-      const result = await processYouTubeVideo(videoDetails.url, startTime, endTime);
-      
-      toast.success('Video processing started successfully!');
+      await processYouTubeVideo(videoDetails.url, startTime, endTime);
+
+      toast.success("Video processing started successfully!");
       onClose();
     } catch (error) {
-      console.error('Error processing video:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to process video');
+      console.error("Error processing video:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to process video"
+      );
     } finally {
       setProcessing(false);
     }
@@ -166,8 +177,10 @@ export default function YouTubeVideoModal({ isOpen, onClose, videoUrl }: YouTube
                   className="w-48 h-27 object-cover rounded-lg"
                 />
                 <div className="flex-1 space-y-2">
-                  <h3 className="text-lg font-semibold line-clamp-2">{videoDetails.title}</h3>
-                  
+                  <h3 className="text-lg font-semibold line-clamp-2">
+                    {videoDetails.title}
+                  </h3>
+
                   <div className="flex items-center gap-4 text-sm text-muted-foreground">
                     <div className="flex items-center gap-1">
                       <Clock className="h-4 w-4" />
@@ -213,10 +226,11 @@ export default function YouTubeVideoModal({ isOpen, onClose, videoUrl }: YouTube
                       </p>
                     </div>
                   </div>
-                  
+
                   <div className="bg-muted p-3 rounded-lg">
                     <p className="text-sm">
-                      <span className="font-medium">Duration:</span> {formatTime(endTime - startTime)}
+                      <span className="font-medium">Duration:</span>{" "}
+                      {formatTime(endTime - startTime)}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       Video length: {formatTime(videoDetails.duration)}
@@ -230,8 +244,8 @@ export default function YouTubeVideoModal({ isOpen, onClose, videoUrl }: YouTube
                 <Button variant="outline" onClick={onClose}>
                   Cancel
                 </Button>
-                <Button 
-                  onClick={handleSubmit} 
+                <Button
+                  onClick={handleSubmit}
                   disabled={processing || startTime >= endTime}
                   className="min-w-[120px]"
                 >
@@ -258,4 +272,4 @@ export default function YouTubeVideoModal({ isOpen, onClose, videoUrl }: YouTube
       </div>
     </div>
   );
-} 
+}

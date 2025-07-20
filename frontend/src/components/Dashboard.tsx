@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { Button } from "./ui/button";
 import {
   Card,
@@ -183,23 +182,6 @@ export default function Dashboard({
   return (
     <div className="min-h-screen bg-background">
       <div className="mx-auto flex max-w-6xl flex-col space-y-8 px-6 py-12">
-        <div className="flex items-center justify-between">
-          <div className="space-y-2">
-            <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-              Podcast Clipper
-            </h1>
-            <p className="text-lg text-muted-foreground">
-              Transform your podcasts into viral clips with AI-powered precision
-            </p>
-          </div>
-          <Link href="/dashboard/billing">
-            <Button size="lg" className="gap-2">
-              <Sparkles className="h-4 w-4" />
-              Buy Credits
-            </Button>
-          </Link>
-        </div>
-
         <div className="space-y-6">
           <Card className="border-2 border-dashed border-muted-foreground/25 bg-card/50">
             <CardHeader className="text-center pb-4">
@@ -279,10 +261,6 @@ export default function Dashboard({
                   </Button>
                 </div>
               )}
-              <p className="text-xs text-muted-foreground text-center">
-                Supports YouTube videos up to 2 hours in length • Upload MP4
-                files up to 500MB
-              </p>
             </CardContent>
           </Card>
 

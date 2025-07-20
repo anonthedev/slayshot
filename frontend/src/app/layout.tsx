@@ -12,7 +12,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "OmenClip",
+  title: "slayshot",
   description:
     "Transform long youtube videos into viral clips with AI-powered precision",
 };
@@ -24,7 +24,7 @@ export default function RootLayout({
 }>) {
   return (
     <SessionProvider>
-      <html lang="en">
+      <html lang="en" suppressHydrationWarning>
         <body
           className={`${inter.variable} antialiased flex flex-col h-screen w-screen overflow-x-hidden`}
         >

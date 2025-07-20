@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,6 +12,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabaseClient } from "@/lib/supabase";
 import { signOut, useSession } from "next-auth/react";
+import Link from "next/link";
 
 export default function Navbar() {
   const { data: session } = useSession();
@@ -26,7 +28,7 @@ export default function Navbar() {
 
       const { data, error } = await supabase
         .from("users")
-        .select("credits, image")
+        .select("credits, image, plan")
         .eq("id", session.user.id)
         .single();
 
@@ -48,9 +50,14 @@ export default function Navbar() {
 
   return (
     <nav className="w-full flex items-center justify-between py-4 px-6 border-b">
-      <div className="font-bold text-xl">omenclip</div>
+      <div className="font-bold text-xl">slayshot</div>
 
-      {session && (
+      <div className="flex items-center gap-4">
+        <Link href="/pricing">
+          <Button variant="ghost">Pricing</Button>
+        </Link>
+
+        {session && (
         <div className="flex items-center gap-4">
           {loading ? (
             <>
@@ -86,6 +93,7 @@ export default function Navbar() {
           )}
         </div>
       )}
+      </div>
     </nav>
   );
 }
