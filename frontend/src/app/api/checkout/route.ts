@@ -15,7 +15,7 @@ export const GET = Checkout({
     : 'http://localhost:3000/confirmation',
 });
 
-// Keep POST method for custom checkout creation if needed
+// POST method for credit package purchases
 export async function POST(request: NextRequest) {
   try {
     // Check if user is authenticated
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 
       `${request.nextUrl.protocol}//${request.nextUrl.host}`;
 
-    // Create checkout session with Polar using the correct API structure
+    // Create checkout session with Polar for credit purchase
     const checkoutData = {
       products: [productId],
       success_url: `${baseUrl}/confirmation`,
@@ -43,7 +43,8 @@ export async function POST(request: NextRequest) {
       metadata: {
         user_id: session.user.id,
         user_email: session.user.email,
-        user_name: session.user.name || ''
+        user_name: session.user.name || '',
+        product_id: productId // Store product ID in metadata for webhook processing
       }
     };
 

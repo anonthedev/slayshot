@@ -32,6 +32,32 @@ export const clipVideo = inngest.createFunction(
   async ({ event, step }) => {
     const { uploadedFileId, userId, youtubeUrl, uuid, startTime, endTime } = event.data;
 
+    // Get video duration to determine if user is selecting full video
+    let videoDuration = 0;
+    if (youtubeUrl) {
+      try {
+        const videoDetailsResponse = await step.fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/youtube/details`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ url: youtubeUrl }),
+        });
+        
+        if (videoDetailsResponse.ok) {
+          const videoDetails = await videoDetailsResponse.json();
+          videoDuration = videoDetails.duration;
+        }
+      } catch (error) {
+        console.error("Failed to get video duration:", error);
+      }
+    }
+
+    // Determine if user is selecting the full video length
+    const isFullVideo = startTime === 0 && endTime === videoDuration;
+    
+    console.log(`Processing video: startTime=${startTime}, endTime=${endTime}, videoDuration=${videoDuration}, isFullVideo=${isFullVideo}`);
+
     const supabase = createServiceClient();
 
     const uploadedFile = await step.run("get-uploaded-file", async () => {
@@ -57,7 +83,7 @@ export const clipVideo = inngest.createFunction(
       return data as unknown as UploadedFileType;
     });
 
-    if (uploadedFile.users.credits >= Math.floor((endTime - startTime) / 60)) {
+    if (uploadedFile.users.credits >= Math.ceil((endTime - startTime) / 60)) {
       await step.run("update-to-processing", async () => {
         const { error } = await supabase
           .from("uploaded_files")
@@ -68,16 +94,29 @@ export const clipVideo = inngest.createFunction(
         }
       });
 
-      // Prepare payload based on whether we have YouTube URL or S3 key
-      let payload;
+      let payload: {
+        youtube_url?: string;
+        uuid?: string;
+        start_time?: number;
+        end_time?: number;
+        s3_key?: string;
+      }
+      
       if (youtubeUrl && uuid) {
         // YouTube URL processing
         payload = {
           youtube_url: youtubeUrl,
           uuid: uuid,
-          start_time: startTime,
-          end_time: endTime,
         };
+        
+        // Only include time parameters if not selecting full video
+        if (!isFullVideo) {
+          payload.start_time = startTime;
+          payload.end_time = endTime;
+        } else {
+          console.log("Full video selected - not passing time parameters to modal backend");
+        }
+        
         console.log("Payload:", payload);
       } else {
         // S3 key processing (existing functionality)
@@ -93,8 +132,21 @@ export const clipVideo = inngest.createFunction(
           Authorization: `Bearer ${process.env.MODAL_AUTH_TOKEN}`,
         },
       });
+    } else {
+      // User doesn't have enough credits
+      await step.run("update-to-no-credits", async () => {
+        const { error } = await supabase
+          .from("uploaded_files")
+          .update({ status: "no credits" })
+          .eq("id", uploadedFileId);
+        if (error) {
+          throw new Error("Failed to update uploaded file status");
+        }
+      });
+      return { success: false, reason: "insufficient credits" };
     }
 
+    // Only proceed with clip processing if we have enough credits
     const result = await step.run("send-clip-to-db", async () => {
       let folderPrefix;
       if (youtubeUrl && uuid) {
@@ -127,12 +179,13 @@ export const clipVideo = inngest.createFunction(
 
       return { clipsFound: clipKeys.length };
     });
+    
     if (result.clipsFound > 0) {
       await step.run("update-credits", async () => {
         await supabase
           .from("users")
           .update({
-            credits: uploadedFile.users.credits - Math.floor((endTime - startTime) / 60)
+            credits: uploadedFile.users.credits - Math.ceil((endTime - startTime) / 60)
           })
           .eq("id", userId);
       });

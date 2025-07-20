@@ -431,7 +431,7 @@ def process_clip(base_dir: str, original_video_path: str, uuid_or_s3_key: str, s
     s3_client = boto3.client("s3")
     s3_client.upload_file(subtitle_output_path, "omenclip", output_s3_key)
 
-@app.cls(gpu="L40S", timeout=3600, retries=0, scaledown_window=20, secrets=[modal.Secret.from_name("omen-clipper-secret")], volumes={mount_path: volume})
+@app.cls(gpu="L40S", timeout=85000, retries=0, scaledown_window=20, secrets=[modal.Secret.from_name("omen-clipper-secret")], volumes={mount_path: volume})
 class OmenClipper:
     @modal.enter()
     def load_model(self):
@@ -586,22 +586,24 @@ class OmenClipper:
     
     def identify_viral_moments(self, transcript: dict):
         prompt = """
-You are given a transcript of a podcast video, where each word includes its start and end time in seconds. Your goal is to extract question-answer clips from this transcript.
+You are given a transcript of a video where each word includes its start and end time in seconds. The video may be a podcast (e.g., Lex Fridman style), an interview, a vlog, a monologue, or any content with a speaking person visible on screen. Your task is to extract short, viral-worthy clips from the transcript.
 
 Extraction Criteria:
 
 Each clip must:
-- Be between 30 and 60 seconds long, ideally 40–60 seconds, but 30–39 seconds is allowed if it's a complete Q&A.
-- Start with the question and end with the complete answer.
-- Optionally include a few extra sentences before the question if they provide helpful context.
-- Be non-overlapping with any other clip.
-- Begin and end only at sentence boundaries, matching the given word timestamps.
-- Use only the provided start and end timestamps — do not modify or generate new timestamps.
+- Be 30 to 60 seconds long. Prefer 40–60s, but allow 30–39s if the segment is powerful and self-contained.
+- Start and end cleanly at sentence boundaries, using only the provided word-level timestamps — do not invent or adjust timestamps.
+- Include complete thoughts — thoughtful answers, memorable questions, emotional insights, rants, jokes, monologues, hot takes, or impactful quotes — even if it's only one speaker.
+- Optionally include a few extra sentences before the main moment to provide helpful setup or context.
+- Be non-overlapping with other clips — each clip must cover a unique part of the video.
+- Use only the exact start and end timestamps from the transcript.
 
-Exclude:
-- Greetings ("Hi", "Thanks for joining", etc.)
-- Farewells ("Goodbye", "See you next time", etc.)
-- General chit-chat or filler not part of a clear Q&A or story
+What to Focus On:
+- Deep or thought-provoking exchanges (like in Lex Fridman or other podcasts).
+- Emotionally powerful moments — vulnerability, intensity, or personal reflection.
+- Funny, surprising, or viral-worthy lines.
+- Strong opinions, motivational moments, or mic-drop takes.
+- Clear and complete Q&A exchanges, especially when the answer is engaging or moving.
 
 Output Format (Must be valid for json.loads in Python):
 
@@ -612,7 +614,7 @@ Return a list of JSON objects, each representing a clip:
 - "start" and "end" must use only the timestamps from the transcript.
 - Aim to extract 40–60s clips where possible.
 - Do not include any extra metadata or output — only the JSON list.
-- You must always return atleast 1 clip.
+- You must always return at least 1 clip. But try to return as many as possible.
 
 If no valid clips are found:
 

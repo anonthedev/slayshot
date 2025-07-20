@@ -43,10 +43,13 @@ export default function YouTubeVideoModal({
   const [endTime, setEndTime] = useState(0);
   const [startTimeInput, setStartTimeInput] = useState("0:00");
   const [endTimeInput, setEndTimeInput] = useState("0:00");
+  const [userCredits, setUserCredits] = useState(0);
+  const [creditsLoading, setCreditsLoading] = useState(true);
 
   useEffect(() => {
     if (isOpen && videoUrl) {
       fetchVideoDetails();
+      fetchUserCredits();
     }
   }, [isOpen, videoUrl]);
 
@@ -85,6 +88,33 @@ export default function YouTubeVideoModal({
     }
   };
 
+  const fetchUserCredits = async () => {
+    setCreditsLoading(true);
+    try {
+      const response = await fetch("/api/user/credits", {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to fetch user credits");
+      }
+
+      const data = await response.json();
+      setUserCredits(data.credits);
+    } catch (error) {
+      console.error("Error fetching user credits:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to fetch user credits"
+      );
+    } finally {
+      setCreditsLoading(false);
+    }
+  };
+
   const formatTime = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
@@ -120,6 +150,15 @@ export default function YouTubeVideoModal({
     setEndTime(seconds);
   };
 
+  const calculateRequiredCredits = (): number => {
+    const durationInSeconds = endTime - startTime;
+    return Math.ceil(durationInSeconds / 60); // 1 credit per minute, rounded up
+  };
+
+  const hasEnoughCredits = (): boolean => {
+    return userCredits >= calculateRequiredCredits();
+  };
+
   const handleSubmit = async () => {
     if (!videoDetails) return;
 
@@ -130,6 +169,11 @@ export default function YouTubeVideoModal({
 
     if (startTime < 0 || endTime > videoDetails.duration) {
       toast.error("Time range must be within video duration");
+      return;
+    }
+
+    if (!hasEnoughCredits()) {
+      toast.error(`Insufficient credits. You need ${calculateRequiredCredits()} credits but have ${userCredits}.`);
       return;
     }
 
@@ -155,7 +199,14 @@ export default function YouTubeVideoModal({
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-background rounded-lg shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-6 border-b">
-          <h2 className="text-xl font-semibold">YouTube Video Details</h2>
+          <div>
+            <h2 className="text-xl font-semibold">YouTube Video Details</h2>
+            {!creditsLoading && (
+              <p className="text-sm text-muted-foreground mt-1">
+                Your credits: {userCredits}
+              </p>
+            )}
+          </div>
           <Button variant="ghost" size="sm" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
@@ -235,6 +286,21 @@ export default function YouTubeVideoModal({
                     <p className="text-xs text-muted-foreground">
                       Video length: {formatTime(videoDetails.duration)}
                     </p>
+                    {creditsLoading ? (
+                      <div className="mt-2 pt-2 border-t border-border">
+                        <p className="text-sm text-muted-foreground">Loading credits...</p>
+                      </div>
+                    ) : (
+                      <div className="mt-2 pt-2 border-t border-border">
+                        <p className="text-sm">
+                          <span className="font-medium">Credits required:</span>{" "}
+                          {calculateRequiredCredits()} ({formatTime(endTime - startTime)} = {Math.ceil((endTime - startTime) / 60)} min)
+                        </p>
+                        <p className={`text-xs ${hasEnoughCredits() ? 'text-green-600' : 'text-red-600'}`}>
+                          Your credits: {userCredits} {!hasEnoughCredits() && `(Need ${calculateRequiredCredits() - userCredits} more)`}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -246,13 +312,18 @@ export default function YouTubeVideoModal({
                 </Button>
                 <Button
                   onClick={handleSubmit}
-                  disabled={processing || startTime >= endTime}
+                  disabled={processing || startTime >= endTime || !hasEnoughCredits() || creditsLoading}
                   className="min-w-[120px]"
                 >
                   {processing ? (
                     <>
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                       Processing...
+                    </>
+                  ) : !hasEnoughCredits() ? (
+                    <>
+                      <Play className="h-4 w-4 mr-2" />
+                      Insufficient Credits
                     </>
                   ) : (
                     <>

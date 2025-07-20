@@ -13,16 +13,16 @@ function ConfirmationContent() {
     <div className="container mx-auto px-4 py-16">
       <Card className="max-w-md mx-auto">
         <CardHeader className="text-center">
-          <CardTitle>Welcome to Pro!</CardTitle>
+          <CardTitle>Purchase Successful!</CardTitle>
           <CardDescription>
-            Your subscription has been activated successfully
+            Your credits have been added to your account
           </CardDescription>
         </CardHeader>
         <CardContent className="text-center">
           <div className="mb-6">
-            <div className="text-3xl font-bold mb-2">200</div>
+            <div className="text-3xl font-bold mb-2">✓</div>
             <div className="text-sm text-muted-foreground">
-              Credits Available
+              Credits Added Successfully
             </div>
           </div>
 
@@ -38,9 +38,9 @@ function ConfirmationContent() {
           )}
 
           <div className="space-y-3 mb-6">
-            <div className="text-sm">✓ 200 credits added to your account</div>
-            <div className="text-sm">✓ Priority processing enabled</div>
-            <div className="text-sm">✓ Advanced export options unlocked</div>
+            <div className="text-sm">✓ Credits added to your account</div>
+            <div className="text-sm">✓ Credits never expire</div>
+            <div className="text-sm">✓ Ready to create amazing clips</div>
           </div>
 
           <Button 

@@ -28,7 +28,7 @@ export default function Navbar() {
 
       const { data, error } = await supabase
         .from("users")
-        .select("credits, image, plan")
+        .select("credits, image")
         .eq("id", session.user.id)
         .single();
 
