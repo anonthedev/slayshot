@@ -235,81 +235,26 @@ def burn_subtitles(transcript: list, clip_start: float, clip_end: float, clip_vi
 
     subs.styles["Default"] = base_style
 
-    # Create individual subtitle events for each word with precise timing
+    # Create simple subtitle events that replace each other (no stacking)
     for start, end, word_segments in subtitles:
-        # Create a timeline of events for this subtitle group
-        timeline_events = []
-        
-        # Add the start of the subtitle (all words in white)
-        if word_segments:
-            timeline_events.append({
-                'time': start,
-                'type': 'start',
-                'active_word_index': -1  # No active word yet
-            })
-        
-        # Add events for each word becoming active
-        for i, seg in enumerate(word_segments):
+        # Build the complete text for this subtitle group
+        text_parts = []
+        for seg in word_segments:
             word = seg["word"].strip()
-            if not word:
-                continue
-            timeline_events.append({
-                'time': seg["start"],
-                'type': 'word_start',
-                'active_word_index': i
-            })
-            timeline_events.append({
-                'time': seg["end"],
-                'type': 'word_end',
-                'active_word_index': i
-            })
+            if word:
+                text_parts.append(word)
         
-        # Add the end of the subtitle
-        if word_segments:
-            timeline_events.append({
-                'time': end,
-                'type': 'end',
-                'active_word_index': len(word_segments)
-            })
-        
-        # Sort timeline events by time
-        timeline_events.sort(key=lambda x: x['time'])
-        
-        # Create subtitle events for each time segment
-        for i in range(len(timeline_events) - 1):
-            current_event = timeline_events[i]
-            next_event = timeline_events[i + 1]
+        if text_parts:
+            subtitle_text = " ".join(text_parts)
             
-            # Skip if no time difference
-            if next_event['time'] <= current_event['time']:
-                continue
-            
-            # Build the text for this time segment
-            text_parts = []
-            active_word_index = current_event['active_word_index']
-            
-            for j, seg in enumerate(word_segments):
-                word = seg["word"].strip()
-                if not word:
-                    continue
-                
-                if j == active_word_index:
-                    # This word is currently being spoken - green and slightly larger
-                    text_parts.append(f"{{\\1c&H00FF00&\\fs120}}{word}")
-                else:
-                    # This word is not being spoken - white and normal size
-                    text_parts.append(f"{{\\1c&HFFFFFF&\\fs100}}{word}")
-            
-            if text_parts:
-                subtitle_text = " ".join(text_parts)
-                
-                line = pysubs2.SSAEvent(
-                    start=pysubs2.make_time(s=current_event['time']),
-                    end=pysubs2.make_time(s=next_event['time']),
-                    text=subtitle_text,
-                    style="Default"
-                )
-                subs.events.append(line)
+            # Create a single subtitle event for the entire duration
+            line = pysubs2.SSAEvent(
+                start=pysubs2.make_time(s=start),
+                end=pysubs2.make_time(s=end),
+                text=subtitle_text,
+                style="Default"
+            )
+            subs.events.append(line)
 
     # Save ASS file
     subs.save(subtitle_path)
@@ -789,7 +734,7 @@ The transcript is as follows:\n\n""" + str(transcript)
         
         # Process clips with parallelization (max 2 at once)
         processed_clips = []
-        valid_clip_moments = [(index, moment) for index, moment in enumerate(clip_moments[:1]) if "start" in moment and "end" in moment]
+        valid_clip_moments = [(index, moment) for index, moment in enumerate(clip_moments) if "start" in moment and "end" in moment]
         
         if valid_clip_moments:
             print(f"Starting concurrent processing of {len(valid_clip_moments)} clips with max 2 workers...")
