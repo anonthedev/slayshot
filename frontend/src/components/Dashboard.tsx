@@ -14,17 +14,13 @@ import {
   Loader2,
   Youtube,
   FileVideo,
-  Sparkles,
   Clock,
   CheckCircle,
   XCircle,
   AlertCircle,
-  Upload,
 } from "lucide-react";
-import { useState, useRef } from "react";
-import { generateUploadUrl } from "@/actions/s3";
+import { useState } from "react";
 import { toast } from "sonner";
-import { processVideo } from "@/actions/generations";
 import YouTubeVideoModal from "./YouTubeVideoModal";
 import {
   Table,
@@ -49,12 +45,12 @@ export default function Dashboard({
     createdAt: Date;
   }[];
 }) {
-  const [files, setFiles] = useState<File[]>([]);
-  const [uploading, setUploading] = useState(false);
+  // const [files, setFiles] = useState<File[]>([]);
+  // const [uploading, setUploading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [isYouTubeModalOpen, setIsYouTubeModalOpen] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
   const handleRefresh = async () => {
@@ -63,62 +59,62 @@ export default function Dashboard({
     setTimeout(() => setRefreshing(false), 600);
   };
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = event.target.files;
-    if (selectedFiles && selectedFiles.length > 0) {
-      setFiles(Array.from(selectedFiles));
-    }
-  };
+  // const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  //   const selectedFiles = event.target.files;
+  //   if (selectedFiles && selectedFiles.length > 0) {
+  //     setFiles(Array.from(selectedFiles));
+  //   }
+  // };
 
-  const handleFileButtonClick = () => {
-    fileInputRef.current?.click();
-  };
+  // const handleFileButtonClick = () => {
+  //   fileInputRef.current?.click();
+  // };
 
-  const handleUpload = async () => {
-    if (files.length === 0) return;
+  // const handleUpload = async () => {
+  //   if (files.length === 0) return;
 
-    const file = files[0]!;
-    setUploading(true);
+  //   const file = files[0]!;
+  //   setUploading(true);
 
-    try {
-      const { success, signedUrl, uploadedFileId } = await generateUploadUrl({
-        filename: file.name,
-        contentType: file.type,
-      });
+  //   try {
+  //     const { success, signedUrl, uploadedFileId } = await generateUploadUrl({
+  //       filename: file.name,
+  //       contentType: file.type,
+  //     });
 
-      if (!success) throw new Error("Failed to get upload URL");
+  //     if (!success) throw new Error("Failed to get upload URL");
 
-      const uploadResponse = await fetch(signedUrl, {
-        method: "PUT",
-        body: file,
-        headers: {
-          "Content-Type": file.type,
-        },
-      });
+  //     const uploadResponse = await fetch(signedUrl, {
+  //       method: "PUT",
+  //       body: file,
+  //       headers: {
+  //         "Content-Type": file.type,
+  //       },
+  //     });
 
-      if (!uploadResponse.ok)
-        throw new Error(`Upload filed with status: ${uploadResponse.status}`);
+  //     if (!uploadResponse.ok)
+  //       throw new Error(`Upload filed with status: ${uploadResponse.status}`);
 
-      const result = await processVideo(uploadedFileId);
-      console.log("Process result:", result);
+  //     const result = await processVideo(uploadedFileId);
+  //     console.log("Process result:", result);
 
-      setFiles([]);
+  //     setFiles([]);
 
-      toast.success("Video uploaded successfully", {
-        description:
-          "Your video has been scheduled for processing. Check the status below.",
-        duration: 5000,
-      });
-    } catch (error) {
-      console.error("Upload failed:", error);
-      toast.error("Upload failed", {
-        description:
-          "There was a problem uploading your video. Please try again.",
-      });
-    } finally {
-      setUploading(false);
-    }
-  };
+  //     toast.success("Video uploaded successfully", {
+  //       description:
+  //         "Your video has been scheduled for processing. Check the status below.",
+  //       duration: 5000,
+  //     });
+  //   } catch (error) {
+  //     console.error("Upload failed:", error);
+  //     toast.error("Upload failed", {
+  //       description:
+  //         "There was a problem uploading your video. Please try again.",
+  //     });
+  //   } finally {
+  //     setUploading(false);
+  //   }
+  // };
 
   const handleYouTubeSubmit = () => {
     if (!youtubeUrl.trim()) {
@@ -217,7 +213,7 @@ export default function Dashboard({
                   </Button>
                 </div>
               </div>
-              <Button
+              {/* <Button
                 variant="outline"
                 size="icon"
                 onClick={handleFileButtonClick}
@@ -260,7 +256,7 @@ export default function Dashboard({
                     )}
                   </Button>
                 </div>
-              )}
+              )} */}
             </CardContent>
           </Card>
 
