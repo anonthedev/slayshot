@@ -122,8 +122,8 @@ export default function Dashboard({
       return;
     }
 
-    // Basic validation for YouTube URL
-    const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)/;
+    // Improved validation for all YouTube URL formats
+    const youtubeRegex = /^(https?:\/\/)?((www|m)\.)?(youtube\.com\/(watch\?v=|embed\/|v\/|shorts\/)|youtu\.be\/)[a-zA-Z0-9_-]{11}/;
     if (!youtubeRegex.test(youtubeUrl)) {
       toast.error("Please enter a valid YouTube URL");
       return;

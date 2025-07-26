@@ -29,6 +29,34 @@ interface YouTubeVideoModalProps {
   videoUrl: string;
 }
 
+// Extracts YouTube video ID from any valid YouTube URL
+function extractYouTubeVideoId(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname.endsWith("youtu.be")) {
+      return parsed.pathname.split("/").filter(Boolean)[0] || null;
+    }
+    if (
+      parsed.hostname.endsWith("youtube.com") ||
+      parsed.hostname.endsWith("m.youtube.com")
+    ) {
+      if (parsed.pathname === "/watch" && parsed.searchParams.get("v")) {
+        return parsed.searchParams.get("v");
+      }
+      const match = parsed.pathname.match(
+        /\/(embed|v|shorts)\/([a-zA-Z0-9_-]{11})/
+      );
+      if (match) {
+        return match[2];
+      }
+    }
+    const fallback = url.match(/[a-zA-Z0-9_-]{11}/);
+    return fallback ? fallback[0] : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function YouTubeVideoModal({
   isOpen,
   onClose,
@@ -179,7 +207,10 @@ export default function YouTubeVideoModal({
 
     setProcessing(true);
     try {
-      await processYouTubeVideo(videoDetails.url, startTime, endTime);
+      // Always pass canonical YouTube URL (https://youtube.com/watch?v=ID)
+      const videoId = extractYouTubeVideoId(videoDetails.url);
+      const canonicalUrl = videoId ? `https://youtube.com/watch?v=${videoId}` : videoDetails.url;
+      await processYouTubeVideo(canonicalUrl, startTime, endTime);
 
       toast.success("Video processing started successfully!");
       onClose();

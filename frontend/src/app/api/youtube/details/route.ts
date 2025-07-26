@@ -35,10 +35,36 @@ export async function POST(request: NextRequest) {
 }
 
 function extractVideoId(url: string): string | null {
-  const match = url.match(
-    /(?:youtube\.com\/(?:watch\?.*v=|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/
-  );
-  return match?.[1] ?? null;
+  // Normalize the URL and extract the video ID from all common YouTube URL formats
+  try {
+    const parsed = new URL(url);
+    // Handle youtu.be short links
+    if (parsed.hostname.endsWith("youtu.be")) {
+      return parsed.pathname.split("/").filter(Boolean)[0] || null;
+    }
+    // Handle m.youtube.com, www.youtube.com, youtube.com
+    if (
+      parsed.hostname.endsWith("youtube.com") ||
+      parsed.hostname.endsWith("m.youtube.com")
+    ) {
+      // /watch?v=xxxx
+      if (parsed.pathname === "/watch" && parsed.searchParams.get("v")) {
+        return parsed.searchParams.get("v");
+      }
+      // /embed/xxxx or /v/xxxx or /shorts/xxxx
+      const match = parsed.pathname.match(
+        /\/(embed|v|shorts)\/([a-zA-Z0-9_-]{11})/
+      );
+      if (match) {
+        return match[2];
+      }
+    }
+    // Fallback: try to match any 11-char ID in the URL
+    const fallback = url.match(/[a-zA-Z0-9_-]{11}/);
+    return fallback ? fallback[0] : null;
+  } catch {
+    return null;
+  }
 }
 
 async function fetchVideoMetadata(videoId: string) {

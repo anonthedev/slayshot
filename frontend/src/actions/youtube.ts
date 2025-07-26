@@ -5,6 +5,34 @@ import { auth } from "@/lib/auth";
 import { supabaseClient } from "@/lib/supabase";
 import { v4 as uuidv4 } from "uuid";
 
+// Extracts YouTube video ID from any valid YouTube URL
+function extractYouTubeVideoId(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname.endsWith("youtu.be")) {
+      return parsed.pathname.split("/").filter(Boolean)[0] || null;
+    }
+    if (
+      parsed.hostname.endsWith("youtube.com") ||
+      parsed.hostname.endsWith("m.youtube.com")
+    ) {
+      if (parsed.pathname === "/watch" && parsed.searchParams.get("v")) {
+        return parsed.searchParams.get("v");
+      }
+      const match = parsed.pathname.match(
+        /\/(embed|v|shorts)\/([a-zA-Z0-9_-]{11})/
+      );
+      if (match) {
+        return match[2];
+      }
+    }
+    const fallback = url.match(/[a-zA-Z0-9_-]{11}/);
+    return fallback ? fallback[0] : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function processYouTubeVideo(youtubeUrl: string, startTime: number, endTime: number) {
   const session = await auth();
   if (!session) throw new Error("Unauthorized");
@@ -17,11 +45,11 @@ export async function processYouTubeVideo(youtubeUrl: string, startTime: number,
 
   let videoTitle = "YouTube Video";
   try {
-    const url = new URL(youtubeUrl);
-    const videoId = url.searchParams.get("v") || url.pathname.split("/").pop();
-    videoTitle = `YouTube Video (${videoId})`;
-  } catch {
-  }
+    const videoId = extractYouTubeVideoId(youtubeUrl);
+    if (videoId) {
+      videoTitle = `YouTube Video (${videoId})`;
+    }
+  } catch {}
 
   const { data: uploadedFileDBRecord, error } = await supabase
     .from("uploaded_files")
