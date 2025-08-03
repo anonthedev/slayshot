@@ -229,16 +229,8 @@ export default function YouTubeVideoModal({
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-background rounded-lg shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-6 border-b">
-          <div>
-            <h2 className="text-xl font-semibold">YouTube Video Details</h2>
-            {!creditsLoading && (
-              <p className="text-sm text-muted-foreground mt-1">
-                Your credits: {userCredits}
-              </p>
-            )}
-          </div>
-          <Button variant="ghost" size="sm" onClick={onClose}>
+        <div className="flex items-center justify-end p-2">
+          <Button variant="outline" size="icon" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         </div>

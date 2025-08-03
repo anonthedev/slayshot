@@ -19,13 +19,15 @@ export default async function DashboardPage() {
       id,
       s3_key,
       title,
+      thumbnail,
       status,
       created_at,
       uploaded,
       clips:clips(count)
     `)
     .eq("user_id", session.user.id)
-    .eq("uploaded", true);
+    .eq("uploaded", true)
+    .order("created_at", { ascending: false });
   
   if (uploadedFilesError) {
     throw uploadedFilesError;
@@ -35,6 +37,7 @@ export default async function DashboardPage() {
     id: file.id,
     s3Key: file.s3_key,
     filename: file.title ?? "Unknown filename",
+    thumbnail: file.thumbnail,
     status: file.status,
     clipsCount: file.clips[0]?.count ?? 0,
     createdAt: new Date(file.created_at),

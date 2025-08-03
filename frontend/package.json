@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "inngest-dev": "pnpx inngest-cli@latest dev"
   },
   "dependencies": {
     "@auth/supabase-adapter": "^1.10.0",

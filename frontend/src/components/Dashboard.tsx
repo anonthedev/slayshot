@@ -1,351 +1,300 @@
-"use client";
+"use client"
 
-import { Button } from "./ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "./ui/card";
-import { Input } from "./ui/input";
-import { Label } from "./ui/label";
-import {
-  Loader2,
-  Youtube,
-  FileVideo,
-  Clock,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
-} from "lucide-react";
-import { useState } from "react";
-import { toast } from "sonner";
-import YouTubeVideoModal from "./YouTubeVideoModal";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { useRouter } from "next/navigation";
+import { Button } from "./ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card"
+import { Input } from "./ui/input"
+import { Label } from "./ui/label"
+import { FileVideo, Clock, AlertCircle, Check, X, Sparkles, TrendingUp, Play, RefreshCw } from "lucide-react"
+import { useState } from "react"
+import { toast } from "sonner"
+import YouTubeVideoModal from "./YouTubeVideoModal"
+
+import { Badge } from "@/components/ui/badge"
+import { useRouter } from "next/navigation"
+import { cn } from "@/lib/utils"
 
 export default function Dashboard({
   uploadedFiles,
 }: {
   uploadedFiles: {
-    id: string;
-    s3Key: string;
-    filename: string;
-    status: string;
-    clipsCount: number;
-    createdAt: Date;
-  }[];
+    id: string
+    s3Key: string
+    filename: string
+    thumbnail?: string | null
+    status: string
+    clipsCount: number
+    createdAt: Date
+  }[]
 }) {
-  // const [files, setFiles] = useState<File[]>([]);
-  // const [uploading, setUploading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [youtubeUrl, setYoutubeUrl] = useState("");
-  const [isYouTubeModalOpen, setIsYouTubeModalOpen] = useState(false);
-  // const fileInputRef = useRef<HTMLInputElement>(null);
-  const router = useRouter();
+  const [refreshing, setRefreshing] = useState(false)
+  const [youtubeUrl, setYoutubeUrl] = useState("")
+  const [isYouTubeModalOpen, setIsYouTubeModalOpen] = useState(false)
+  const router = useRouter()
 
   const handleRefresh = async () => {
-    setRefreshing(true);
-    router.refresh();
-    setTimeout(() => setRefreshing(false), 600);
-  };
-
-  // const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-  //   const selectedFiles = event.target.files;
-  //   if (selectedFiles && selectedFiles.length > 0) {
-  //     setFiles(Array.from(selectedFiles));
-  //   }
-  // };
-
-  // const handleFileButtonClick = () => {
-  //   fileInputRef.current?.click();
-  // };
-
-  // const handleUpload = async () => {
-  //   if (files.length === 0) return;
-
-  //   const file = files[0]!;
-  //   setUploading(true);
-
-  //   try {
-  //     const { success, signedUrl, uploadedFileId } = await generateUploadUrl({
-  //       filename: file.name,
-  //       contentType: file.type,
-  //     });
-
-  //     if (!success) throw new Error("Failed to get upload URL");
-
-  //     const uploadResponse = await fetch(signedUrl, {
-  //       method: "PUT",
-  //       body: file,
-  //       headers: {
-  //         "Content-Type": file.type,
-  //       },
-  //     });
-
-  //     if (!uploadResponse.ok)
-  //       throw new Error(`Upload filed with status: ${uploadResponse.status}`);
-
-  //     const result = await processVideo(uploadedFileId);
-  //     console.log("Process result:", result);
-
-  //     setFiles([]);
-
-  //     toast.success("Video uploaded successfully", {
-  //       description:
-  //         "Your video has been scheduled for processing. Check the status below.",
-  //       duration: 5000,
-  //     });
-  //   } catch (error) {
-  //     console.error("Upload failed:", error);
-  //     toast.error("Upload failed", {
-  //       description:
-  //         "There was a problem uploading your video. Please try again.",
-  //     });
-  //   } finally {
-  //     setUploading(false);
-  //   }
-  // };
+    setRefreshing(true)
+    router.refresh()
+    setTimeout(() => setRefreshing(false), 600)
+  }
 
   const handleYouTubeSubmit = () => {
     if (!youtubeUrl.trim()) {
-      toast.error("Please enter a YouTube URL");
-      return;
+      toast.error("Please enter a YouTube URL")
+      return
     }
 
-    // Improved validation for all YouTube URL formats
-    const youtubeRegex = /^(https?:\/\/)?((www|m)\.)?(youtube\.com\/(watch\?v=|embed\/|v\/|shorts\/)|youtu\.be\/)[a-zA-Z0-9_-]{11}/;
+    const youtubeRegex =
+      /^(https?:\/\/)?((www|m)\.)?(youtube\.com\/(watch\?v=|embed\/|v\/|shorts\/)|youtu\.be\/)[a-zA-Z0-9_-]{11}/
     if (!youtubeRegex.test(youtubeUrl)) {
-      toast.error("Please enter a valid YouTube URL");
-      return;
+      toast.error("Please enter a valid YouTube URL")
+      return
     }
 
-    setIsYouTubeModalOpen(true);
-  };
+    setIsYouTubeModalOpen(true)
+  }
 
   const handleCloseYouTubeModal = () => {
-    setIsYouTubeModalOpen(false);
-    setYoutubeUrl("");
-    handleRefresh();
-  };
+    setIsYouTubeModalOpen(false)
+    setYoutubeUrl("")
+    handleRefresh()
+  }
 
-  const handleRowClick = (item: { id: string; clipsCount: number }) => {
+  const handleRowClick = (item: { id: string; clipsCount: number; thumbnail?: string | null }) => {
     if (item.clipsCount > 0) {
-      router.push(`/dashboard/clips/${item.id}`);
+      router.push(`/clips/${item.id}`)
     }
-  };
+  }
 
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "queued":
-        return <Clock className="h-4 w-4" />;
+        return <Clock className="h-3.5 w-3.5" />
       case "processing":
-        return <Loader2 className="h-4 w-4 animate-spin" />;
+        return (
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+            <span>Processing</span>
+          </div>
+        )
       case "processed":
-        return <CheckCircle className="h-4 w-4" />;
+        return <Check className="h-3.5 w-3.5 text-green-500" />
       case "failed":
-        return <XCircle className="h-4 w-4" />;
+        return <X className="h-3.5 w-3.5 text-red-500" />
       case "no credits":
-        return <AlertCircle className="h-4 w-4" />;
+        return <AlertCircle className="h-3.5 w-3.5 text-orange-500" />
       default:
-        return <Clock className="h-4 w-4" />;
+        return <Clock className="h-3.5 w-3.5" />
     }
-  };
+  }
 
-  const getStatusVariant = (status: string) => {
+  // const getStatusVariant = (status: string) => {
+  //   switch (status) {
+  //     case "processed":
+  //       return "default"
+  //     case "processing":
+  //       return "secondary"
+  //     case "failed":
+  //     case "no credits":
+  //       return "destructive"
+  //     default:
+  //       return "outline"
+  //   }
+  // }
+
+  const getStatusColor = (status: string) => {
     switch (status) {
       case "processed":
-        return "default";
+        return "text-green-600 bg-green-50 border-green-200 dark:bg-green-950 dark:text-green-400 dark:border-green-800"
       case "processing":
-        return "secondary";
+        return "text-blue-600 bg-blue-50 border-blue-200 dark:bg-blue-950 dark:text-blue-400 dark:border-blue-800"
       case "failed":
+        return "text-red-600 bg-red-50 border-red-200 dark:bg-red-950 dark:text-red-400 dark:border-red-800"
       case "no credits":
-        return "destructive";
+        return "text-orange-600 bg-orange-50 border-orange-200 dark:bg-orange-950 dark:text-orange-400 dark:border-orange-800"
       default:
-        return "outline";
+        return "text-gray-600 bg-gray-50 border-gray-200 dark:bg-gray-950 dark:text-gray-400 dark:border-gray-800"
     }
-  };
+  }
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="mx-auto flex max-w-6xl flex-col space-y-8 px-6 py-12">
-        <div className="space-y-6">
-          <Card className="border-2 border-dashed border-muted-foreground/25 bg-card/50">
-            <CardHeader className="text-center pb-4">
-              <CardTitle className="text-2xl flex items-center justify-center gap-2">
-                <Youtube className="h-6 w-6 text-red-500" />
-                Process Video
-              </CardTitle>
-              <CardDescription className="text-base">
-                Paste a YouTube URL or upload a video file to generate clips
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="youtube-url" className="text-sm font-medium">
-                  YouTube URL or Upload File
-                </Label>
-                <div className="flex flex-row gap-3 items-center">
-                  <Input
-                    id="youtube-url"
-                    placeholder="https://www.youtube.com/watch?v=..."
-                    value={youtubeUrl}
-                    onChange={(e) => setYoutubeUrl(e.target.value)}
-                    className="flex-1 text-base"
-                  />
-                  <Button
-                    size="lg"
-                    disabled={!youtubeUrl.trim()}
-                    onClick={handleYouTubeSubmit}
-                    className="px-8 gap-2"
-                  >
-                    <Youtube className="h-4 w-4" />
-                    Get Details
-                  </Button>
-                </div>
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
+      <div className="mx-auto flex max-w-7xl flex-col space-y-8 px-6 py-8">
+        {/* Upload Section */}
+        <Card className="border-2 border-dashed border-primary/20 bg-gradient-to-br from-primary/5 via-transparent to-primary/5 backdrop-blur-sm">
+          <CardHeader className="text-center pb-6">
+            <CardTitle className="text-2xl bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+              Create Viral Clips
+            </CardTitle>
+            <CardDescription className="text-base max-w-md mx-auto">
+              Paste your YouTube URL and let our AI find the most engaging moments for your audience
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-3">
+              <Label htmlFor="youtube-url" className="text-sm font-medium flex items-center gap-2">
+                <TrendingUp className="h-4 w-4" />
+                YouTube URL
+              </Label>
+              <div className="flex gap-3">
+                <Input
+                  id="youtube-url"
+                  placeholder="https://www.youtube.com/watch?v=..."
+                  value={youtubeUrl}
+                  onChange={(e) => setYoutubeUrl(e.target.value)}
+                  className="flex-1 h-12 text-base bg-background/50 backdrop-blur-sm border-primary/20 focus:border-primary/40"
+                />
+                <Button
+                  size="lg"
+                  disabled={!youtubeUrl.trim()}
+                  onClick={handleYouTubeSubmit}
+                  className="px-8 h-12 bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 shadow-lg hover:shadow-xl transition-all duration-200"
+                >
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Generate Clips
+                </Button>
               </div>
-              {/* <Button
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Videos Grid */}
+        {uploadedFiles.length > 0 && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <h2 className="text-2xl font-semibold tracking-tight">Your Videos</h2>
+                <p className="text-muted-foreground">
+                  {uploadedFiles.length} video{uploadedFiles.length !== 1 ? "s" : ""} processed
+                </p>
+              </div>
+              <Button
                 variant="outline"
-                size="icon"
-                onClick={handleFileButtonClick}
-                disabled={uploading}
-                className=""
+                size="sm"
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="gap-2 bg-background/50 backdrop-blur-sm hover:bg-background/80"
               >
-                <Upload className="h-3 w-3" />
+                <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
+                Refresh
               </Button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="video/mp4"
-                onChange={handleFileSelect}
-                className="hidden"
-              />
-              {files.length > 0 && (
-                <div className="flex items-center justify-between pt-3">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <FileVideo className="h-4 w-4" />
-                    <span>{files[0]?.name}</span>
-                    <span>
-                      ({(files[0]?.size / (1024 * 1024)).toFixed(1)} MB)
-                    </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {uploadedFiles.map((item) => (
+                <Card
+                  key={item.id}
+                  className={cn(
+                    "my-0 py-0 group overflow-hidden transition-all duration-300 hover:shadow-xl border-0 bg-gradient-to-br from-card via-card to-card/50 backdrop-blur-sm",
+                    item.clipsCount > 0
+                      ? "cursor-pointer hover:scale-[1.02] hover:shadow-2xl hover:shadow-primary/10"
+                      : "",
+                  )}
+                  onClick={() => handleRowClick(item)}
+                >
+                  <div className="relative">
+                    {/* Thumbnail */}
+                    <div className="aspect-video bg-gradient-to-br from-muted/50 to-muted/30 rounded-t-lg overflow-hidden relative">
+                      {item.thumbnail ? (
+                        <img
+                          src={item.thumbnail || "/placeholder.svg"}
+                          alt="Video thumbnail"
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-muted/30 to-muted/50">
+                          <FileVideo className="h-12 w-12 text-muted-foreground/50" />
+                        </div>
+                      )}
+
+                      {/* Play overlay for completed videos */}
+                      {item.clipsCount > 0 && (
+                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+                          <div className="rounded-full bg-white/90 p-3 transform scale-90 group-hover:scale-100 transition-transform duration-300">
+                            <Play className="h-6 w-6 text-gray-900 ml-0.5" />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Status badge */}
+                      <div className="absolute top-3 right-3">
+                        <Badge className={cn("text-xs font-medium border shadow-sm", getStatusColor(item.status))}>
+                          {item.status === "processing" ? (
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-2 h-2 bg-current rounded-full animate-pulse"></div>
+                              Processing
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              {getStatusIcon(item.status)}
+                              {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+                            </div>
+                          )}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    <CardContent className="p-4 space-y-3">
+                      {/* Title */}
+                      <h3 className="font-semibold text-sm line-clamp-2 leading-tight group-hover:text-primary transition-colors duration-200">
+                        {item.filename}
+                      </h3>
+
+                      {/* Stats */}
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>
+                          {new Date(item.createdAt).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                            hour12: true,
+                          })}
+                        </span>
+                        {item.clipsCount > 0 && (
+                          <div className="flex items-center gap-1 text-primary font-medium">
+                            <Sparkles className="h-3 w-3" />
+                            {item.clipsCount} clip{item.clipsCount !== 1 ? "s" : ""}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Action indicator */}
+                      {item.clipsCount > 0 && (
+                        <div className="pt-2 border-t border-border/50">
+                          <div className="flex items-center gap-2 text-xs font-medium text-primary">
+                            <Play className="h-3 w-3" />
+                            View clips
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
                   </div>
-                  <Button
-                    disabled={uploading}
-                    onClick={handleUpload}
-                    className="gap-2"
-                  >
-                    {uploading ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="h-4 w-4" />
-                        Generate Clips
-                      </>
-                    )}
-                  </Button>
-                </div>
-              )} */}
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Empty state */}
+        {uploadedFiles.length === 0 && (
+          <Card className="border-dashed border-2 border-muted-foreground/25 bg-gradient-to-br from-muted/20 via-transparent to-muted/20">
+            <CardContent className="flex flex-col items-center justify-center py-16 text-center space-y-4">
+              <div className="rounded-full bg-gradient-to-br from-primary/10 to-primary/5 p-6">
+                <FileVideo className="h-12 w-12 text-primary/60" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-semibold">Ready to create viral content?</h3>
+                <p className="text-muted-foreground max-w-md">
+                  Paste a YouTube URL above to get started. Our AI will analyze your video and create engaging clips
+                  automatically.
+                </p>
+              </div>
             </CardContent>
           </Card>
-
-          {uploadedFiles.length > 0 && (
-            <Card>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">Processing Queue</h3>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleRefresh}
-                    disabled={refreshing}
-                    className="gap-2 bg-transparent"
-                  >
-                    {refreshing && <Loader2 className="h-4 w-4 animate-spin" />}
-                    Refresh
-                  </Button>
-                </div>
-                <Card>
-                  <CardContent className="p-0">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>File</TableHead>
-                          <TableHead>Date</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Clips</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {uploadedFiles.map((item) => (
-                          <TableRow
-                            key={item.id}
-                            className={
-                              item.clipsCount > 0
-                                ? "cursor-pointer hover:bg-muted/50 transition-colors"
-                                : ""
-                            }
-                            onClick={() => handleRowClick(item)}
-                          >
-                            <TableCell className="font-medium">
-                              <div className="flex items-center gap-2">
-                                <FileVideo className="h-4 w-4 text-muted-foreground" />
-                                <span className="max-w-xs truncate">
-                                  {item.filename}
-                                </span>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-muted-foreground">
-                              {new Date(item.createdAt).toLocaleDateString()}
-                            </TableCell>
-                            <TableCell>
-                              <Badge
-                                variant={getStatusVariant(item.status)}
-                                className="gap-1"
-                              >
-                                {getStatusIcon(item.status)}
-                                {item.status.charAt(0).toUpperCase() +
-                                  item.status.slice(1)}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              {item.clipsCount > 0 ? (
-                                <span className="font-medium text-primary">
-                                  {item.clipsCount} clip
-                                  {item.clipsCount !== 1 ? "s" : ""} →
-                                </span>
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </CardContent>
-                </Card>
-              </CardContent>
-            </Card>
-          )}
-        </div>
+        )}
       </div>
 
-      <YouTubeVideoModal
-        isOpen={isYouTubeModalOpen}
-        onClose={handleCloseYouTubeModal}
-        videoUrl={youtubeUrl}
-      />
+      <YouTubeVideoModal isOpen={isYouTubeModalOpen} onClose={handleCloseYouTubeModal} videoUrl={youtubeUrl} />
     </div>
-  );
+  )
 }

@@ -43,13 +43,39 @@ export async function processYouTubeVideo(youtubeUrl: string, startTime: number,
   const sessionUuid = uuidv4();
   const s3Key = `${sessionUuid}/original.mp4`;
 
+  // Fetch video metadata to get actual title and thumbnail
   let videoTitle = "YouTube Video";
+  let videoThumbnail = null;
+  let videoId = null;
+  
   try {
-    const videoId = extractYouTubeVideoId(youtubeUrl);
+    videoId = extractYouTubeVideoId(youtubeUrl);
+    if (videoId) {
+      // Fetch video details from YouTube API
+      const videoDetailsResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/youtube/details`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ url: youtubeUrl }),
+      });
+      
+      if (videoDetailsResponse.ok) {
+        const videoDetails = await videoDetailsResponse.json();
+        videoTitle = videoDetails.title || `YouTube Video (${videoId})`;
+        videoThumbnail = videoDetails.thumbnail;
+      } else {
+        // Fallback to ID-based title if API call fails
+        videoTitle = `YouTube Video (${videoId})`;
+      }
+    }
+  } catch (error) {
+    console.error("Error fetching video metadata:", error);
+    // Fallback to ID-based title if any error occurs
     if (videoId) {
       videoTitle = `YouTube Video (${videoId})`;
     }
-  } catch {}
+  }
 
   const { data: uploadedFileDBRecord, error } = await supabase
     .from("uploaded_files")
@@ -57,6 +83,7 @@ export async function processYouTubeVideo(youtubeUrl: string, startTime: number,
       user_id: session.user.id,
       s3_key: s3Key,
       title: videoTitle,
+      thumbnail: videoThumbnail,
       status: "processing",
       uploaded: true,
       start_time: startTime,

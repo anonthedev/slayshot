@@ -101,13 +101,6 @@ export default function Home() {
           </Link>
         </div>
       </section>
-
-      {/* Footer */}
-      <footer className="container mx-auto px-6 py-8 border-t">
-        <div className="text-center text-muted-foreground">
-          <p>&copy; 2024 Slayshot. All rights reserved.</p>
-        </div>
-      </footer>
     </div>
   );
 }

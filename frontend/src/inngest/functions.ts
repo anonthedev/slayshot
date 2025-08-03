@@ -32,8 +32,11 @@ export const clipVideo = inngest.createFunction(
   async ({ event, step }) => {
     const { uploadedFileId, userId, youtubeUrl, uuid, startTime, endTime } = event.data;
 
-    // Get video duration to determine if user is selecting full video
+    // Get video duration and metadata to determine if user is selecting full video
     let videoDuration = 0;
+    let videoTitle = null;
+    let videoThumbnail = null;
+    
     if (youtubeUrl) {
       try {
         const videoDetailsResponse = await step.fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/youtube/details`, {
@@ -47,6 +50,8 @@ export const clipVideo = inngest.createFunction(
         if (videoDetailsResponse.ok) {
           const videoDetails = await videoDetailsResponse.json();
           videoDuration = videoDetails.duration;
+          videoTitle = videoDetails.title;
+          videoThumbnail = videoDetails.thumbnail;
         }
       } catch (error) {
         console.error("Failed to get video duration:", error);
@@ -93,6 +98,23 @@ export const clipVideo = inngest.createFunction(
           throw new Error("Failed to update uploaded file status");
         }
       });
+
+      // Update video metadata if available (for YouTube videos)
+      if (youtubeUrl && (videoTitle || videoThumbnail)) {
+        await step.run("update-video-metadata", async () => {
+          const updateData: { title?: string; thumbnail?: string } = {};
+          if (videoTitle) updateData.title = videoTitle;
+          if (videoThumbnail) updateData.thumbnail = videoThumbnail;
+          
+          const { error } = await supabase
+            .from("uploaded_files")
+            .update(updateData)
+            .eq("id", uploadedFileId);
+          if (error) {
+            console.error("Failed to update video metadata:", error);
+          }
+        });
+      }
 
       let payload: {
         youtube_url?: string;
