@@ -49,7 +49,7 @@ export default function Navbar() {
   }, [session]);
 
   return (
-    <nav className="w-full flex items-center justify-between py-4 px-6 border-b">
+    <nav className="w-full flex items-center justify-between py-4 px-6 border-b font-inter">
       <div className="font-bold text-xl">slayshot</div>
 
       <div className="flex items-center gap-4">

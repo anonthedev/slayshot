@@ -117,7 +117,7 @@ export default function Dashboard({
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 font-inter">
       <div className="mx-auto flex max-w-7xl flex-col space-y-8 px-6 py-8">
         {/* Upload Section */}
         <Card className="border-2 border-dashed border-primary/20 bg-gradient-to-br from-primary/5 via-transparent to-primary/5 backdrop-blur-sm">

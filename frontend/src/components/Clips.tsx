@@ -141,11 +141,10 @@ function ClipCard({ clip, index }: { clip: Clip; index: number }) {
             <Button
               onClick={handleDownload}
               disabled={!playUrl}
-              size="sm"
-              className="bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 px-4"
+              size="icon"
+              className="cursor-pointer bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50"
             >
-              <Download className="h-4 w-4 mr-2" />
-              Download
+              <Download className="h-4 w-4" />
             </Button>
           </div>
         </CardContent>

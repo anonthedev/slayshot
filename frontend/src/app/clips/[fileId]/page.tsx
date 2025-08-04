@@ -44,7 +44,7 @@ export default async function ClipsPage({
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 font-inter">
       <div className="mx-auto flex max-w-7xl flex-col space-y-8 px-6 py-8">
         {/* Header */}
         <div className="flex items-center justify-between">
