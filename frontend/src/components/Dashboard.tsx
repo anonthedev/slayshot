@@ -233,6 +233,24 @@ export default function Dashboard({
                       </div>
                     </div>
 
+                    {/* Processing Overlay */}
+                    {item.status === "processing" && (
+                      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-lg flex items-center justify-center z-10">
+                        <div className="text-center p-6 max-w-xs">
+                          <div className="flex justify-center mb-4">
+                            <div className="relative">
+                              <div className="w-12 h-12 rounded-full border-4 border-white/20 border-t-white animate-spin"></div>
+                              <Sparkles className="absolute inset-0 m-auto h-5 w-5 text-white" />
+                            </div>
+                          </div>
+                          <h3 className="text-white font-semibold mb-2">Processing...</h3>
+                          <p className="text-white/80 text-sm leading-relaxed">
+                            This might take some time, you can close the tab.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     <CardContent className="p-4 space-y-3">
                       {/* Title */}
                       <h3 className="font-semibold text-sm line-clamp-2 leading-tight group-hover:text-primary transition-colors duration-200">
