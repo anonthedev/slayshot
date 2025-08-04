@@ -492,6 +492,195 @@ export const testStepFetch = inngest.createFunction(
   }
 );
 
+export const calculateClipVirality = inngest.createFunction(
+  {
+    id: "calculate-clip-virality",
+    concurrency: {
+      limit: 5,
+      key: "event.data.clipId",
+    },
+    retries: 1,
+  },
+  { event: "calculate-clip-virality" },
+  async ({ event, step }) => {
+    const { clipId, s3Key } = event.data;
+
+    const supabase = createServiceClient();
+
+    try {
+      // Step 1: Get the clip from the database
+      const clipResult = await step.run("get-clip", async () => {
+        const { data, error } = await supabase
+          .from("clips")
+          .select("*")
+          .eq("id", clipId)
+          .single();
+
+        if (error || !data) {
+          throw new Error(`Clip not found: ${clipId}`);
+        }
+
+        return data;
+      });
+
+      // Step 2: Get or create transcript
+      const transcriptResult = await step.run("get-or-create-transcript", async () => {
+        // Check if clip already has a transcript
+        if (clipResult.transcript) {
+          console.log("Using existing transcript from database");
+          return JSON.parse(clipResult.transcript);
+        }
+
+        console.log("Transcript not found, calling transcription endpoint");
+        const transcriptionEndpoint = process.env.MODAL_TRANSCRIPTION_ENDPOINT;
+        if (!transcriptionEndpoint) {
+          throw new Error("MODAL_TRANSCRIPTION_ENDPOINT environment variable not set");
+        }
+
+        const response = await fetch(`${process.env.MODAL_TRANSCRIPTION_ENDPOINT}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.MODAL_AUTH_TOKEN}`,
+          },
+          body: JSON.stringify({
+            s3_key: s3Key,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Transcription failed: ${response.status} - ${errorText}`);
+        }
+
+        const transcriptData = await response.json();
+        
+        if (!transcriptData.success) {
+          throw new Error(`Transcription failed: ${transcriptData.error || 'Unknown error'}`);
+        }
+
+        // Store the transcript in the database for future use
+        const { error: updateError } = await supabase
+          .from("clips")
+          .update({ transcript: JSON.stringify(transcriptData.transcript) })
+          .eq("id", clipId);
+
+        if (updateError) {
+          console.error("Failed to store transcript:", updateError);
+        }
+
+        return transcriptData.transcript;
+      });
+
+      // Step 3: Analyze virality using OpenAI
+      const viralityScore = await step.run("analyze-virality", async () => {
+        // Prepare transcript text for analysis
+        const transcriptText = transcriptResult
+          .map((segment: any) => segment.word)
+          .join(' ');
+
+        if (!transcriptText.trim()) {
+          throw new Error("Empty transcript received");
+        }
+
+        const prompt = `
+You are an expert social media analyst specializing in viral content prediction. 
+
+Analyze the following video transcript and rate its viral potential on a scale of 1-10, where:
+- 1-2: Low virality (boring, generic content)
+- 3-4: Below average (somewhat interesting but unlikely to go viral)
+- 5-6: Average (decent content with moderate shareability)
+- 7-8: High potential (engaging, shareable, likely to perform well)
+- 9-10: Viral gold (extremely engaging, highly shareable, strong emotional impact)
+
+Consider these factors:
+1. Emotional impact (humor, surprise, inspiration, controversy)
+2. Shareability and relatability
+3. Uniqueness and memorability
+4. Entertainment value
+5. Quotability and clip-worthiness
+6. Audience engagement potential
+
+Transcript:
+"${transcriptText}"
+
+Please respond with ONLY a single number between 1 and 10 (you can use decimals like 7.5).
+`;
+
+        const response = await fetch("https://api.openai.com/v1/responses", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: "gpt-4o",
+            input: prompt,
+            max_tokens: 10,
+            temperature: 0.3,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(`OpenAI API failed: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
+        }
+
+        const data = await response.json();
+        const scoreText = data.output_text?.trim();
+        
+        if (!scoreText) {
+          throw new Error("No response from OpenAI");
+        }
+
+        const score = parseFloat(scoreText);
+        
+        if (isNaN(score) || score < 1 || score > 10) {
+          throw new Error(`Invalid virality score: ${scoreText}`);
+        }
+
+        return Math.round(score * 10) / 10; // Round to 1 decimal place
+      });
+
+      // Step 4: Store the virality score in the database
+      await step.run("store-virality-score", async () => {
+        const { error } = await supabase
+          .from("clips")
+          .update({ 
+            virality_score: viralityScore
+          })
+          .eq("id", clipId);
+
+        if (error) {
+          throw new Error(`Failed to store virality score: ${error.message}`);
+        }
+      });
+
+      return {
+        success: true,
+        clipId,
+        viralityScore,
+        message: "Virality analysis completed successfully",
+      };
+
+    } catch (error) {
+      console.error("Virality calculation error:", error);
+
+      // Store error in database  
+      await step.run("store-virality-error", async () => {
+        await supabase
+          .from("clips")
+          .update({ 
+            virality_score: null
+          })
+          .eq("id", clipId);
+      });
+
+      throw error;
+    }
+  }
+);
+
 async function getClips(prefix: string) {
   const s3Client = new S3Client({
     region: process.env.AWS_REGION!,
