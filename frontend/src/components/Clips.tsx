@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { getClipPlayUrl } from "@/actions/generations";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ClipModal } from "@/components/ClipModal";
 
 interface Clip {
   id: string;
@@ -13,9 +14,11 @@ interface Clip {
   status: string;
   uploaded: boolean;
   created_at: string;
+  virality_score?: number | null;
+  transcript?: string | null;
 }
 
-function ClipCard({ clip, index }: { clip: Clip; index: number }) {
+function ClipCard({ clip, index, onOpenModal }: { clip: Clip; index: number; onOpenModal: (clip: Clip, playUrl: string) => void }) {
   const [playUrl, setPlayUrl] = useState<string | null>(null);
   const [isLoadingUrl, setIsLoadingUrl] = useState(true);
 
@@ -56,15 +59,9 @@ function ClipCard({ clip, index }: { clip: Clip; index: number }) {
     }
   }, [playUrl, clip.id]);
 
-  const handleDownload = () => {
+  const handleCardClick = () => {
     if (playUrl) {
-      const link = document.createElement("a");
-      link.href = playUrl;
-      link.download = `clip-${index + 1}.mp4`;
-      link.style.display = "none";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      onOpenModal(clip, playUrl);
     }
   };
 
@@ -139,7 +136,7 @@ function ClipCard({ clip, index }: { clip: Clip; index: number }) {
             </div>
 
             <Button
-              onClick={handleDownload}
+              onClick={handleCardClick}
               disabled={!playUrl}
               size="icon"
               className="cursor-pointer bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50"
@@ -154,6 +151,19 @@ function ClipCard({ clip, index }: { clip: Clip; index: number }) {
 }
 
 export function Clips({ clips }: { clips: Clip[] }) {
+  const [selectedClip, setSelectedClip] = useState<{ clip: Clip; playUrl: string } | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const handleOpenModal = (clip: Clip, playUrl: string) => {
+    setSelectedClip({ clip, playUrl });
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setSelectedClip(null);
+  };
+
   if (clips.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -186,7 +196,7 @@ export function Clips({ clips }: { clips: Clip[] }) {
       {/* Clips Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-8">
         {clips.map((clip, index) => (
-          <ClipCard key={clip.id} clip={clip} index={index} />
+          <ClipCard key={clip.id} clip={clip} index={index} onOpenModal={handleOpenModal} />
         ))}
       </div>
 
@@ -197,6 +207,21 @@ export function Clips({ clips }: { clips: Clip[] }) {
           • HD quality
         </p>
       </div>
+
+      {selectedClip && isModalOpen && (
+        <>
+          {typeof window !== 'undefined' && (
+            <div className="fixed inset-0 z-[9999]">
+              <ClipModal
+                clip={selectedClip.clip}
+                playUrl={selectedClip.playUrl}
+                isOpen={isModalOpen}
+                onClose={handleCloseModal}
+              />
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

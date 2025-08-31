@@ -272,11 +272,19 @@ Output Format (Must be valid for json.loads in Python):
 
 Return a list of JSON objects, each representing a clip:
 
-[{"start": seconds, "end": seconds}, ...clip2, clip3]
+[{"start": seconds, "end": seconds, "virality_score": score}, ...clip2, clip3]
 
 - "start" and "end" must use only the timestamps from the transcript.
+- "virality_score" must be an integer from 1-10, where 10 is most viral-worthy (extremely engaging, shareable, quotable) and 1 is least viral-worthy (still good but less compelling).
 - Aim to extract 40–60s clips where possible.
 - Do not include any extra metadata or output — only the JSON list.
+
+Virality Score Guidelines:
+- 9-10: Explosive moments, shocking revelations, extremely funny, deeply emotional, or highly quotable
+- 7-8: Very engaging content, strong opinions, memorable insights, good humor
+- 5-6: Solid content, interesting discussions, moderate engagement potential
+- 3-4: Decent content but less compelling, standard conversations
+- 1-2: Lowest priority clips, filler content
 
 If no valid clips are found:
 

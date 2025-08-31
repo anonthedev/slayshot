@@ -1,6 +1,6 @@
 import { inngest } from "./client";
 import { createClient } from "@supabase/supabase-js";
-import { ListObjectsV2Command, S3Client } from "@aws-sdk/client-s3";
+import { ListObjectsV2Command, S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 
 interface UploadedFileType {
   id: string;
@@ -30,7 +30,7 @@ export const clipVideo = inngest.createFunction(
   },
   { event: "clip-video-events" },
   async ({ event, step }) => {
-    const { uploadedFileId, userId, youtubeUrl, uuid, startTime, endTime } = event.data;
+    const { uploadedFileId, userId, youtubeUrl, uuid, startTime, endTime, layout, baitVideo } = event.data;
 
     // Get video duration and metadata to determine if user is selecting full video
     let videoDuration = 0;
@@ -122,6 +122,8 @@ export const clipVideo = inngest.createFunction(
         start_time?: number;
         end_time?: number;
         s3_key?: string;
+        layout?: string;
+        bait_video?: string;
       }
       
       if (youtubeUrl && uuid) {
@@ -130,6 +132,16 @@ export const clipVideo = inngest.createFunction(
           youtube_url: youtubeUrl,
           uuid: uuid,
         };
+        
+        // Only include layout if provided
+        if (layout) {
+          payload.layout = layout;
+        }
+        
+        // Only include bait_video if provided
+        if (baitVideo) {
+          payload.bait_video = baitVideo;
+        }
         
         // Only include time parameters if not selecting full video
         if (!isFullVideo) {
@@ -145,6 +157,16 @@ export const clipVideo = inngest.createFunction(
         payload = {
           s3_key: uploadedFile.s3_key,
         };
+        
+        // Only include layout if provided
+        if (layout) {
+          payload.layout = layout;
+        }
+        
+        // Only include bait_video if provided
+        if (baitVideo) {
+          payload.bait_video = baitVideo;
+        }
       }
       await step.fetch(`${process.env.CLIPPER_ENDPOINT}`, {
         method: "POST",
@@ -179,9 +201,11 @@ export const clipVideo = inngest.createFunction(
 
       const allKeys = await getClips(folderPrefix);
       const clipKeys = allKeys.filter((key): key is string =>
-        key!.includes("clip")
+        Boolean(key && key.includes("clip") && key.endsWith(".mp4"))
       );
+      
       if (clipKeys.length > 0) {
+        // Insert clips first
         const { data, error } = await supabase
           .from("clips")
           .insert(
@@ -192,10 +216,51 @@ export const clipVideo = inngest.createFunction(
             }))
           )
           .select();
+        
         if (error) {
           throw new Error(`Failed to insert clips: ${error.message}`);
-        } else {
-          console.log(data);
+        }
+        
+        console.log("Clips inserted:", data);
+        
+        // Try to read metadata.json and update clips with virality_score and transcript
+        try {
+          const metadataKey = `${folderPrefix}/metadata.json`;
+          console.log("Attempting to read metadata from:", metadataKey);
+          
+          const metadata = await getMetadataFromS3(metadataKey);
+          console.log("Metadata retrieved:", metadata);
+          
+          if (metadata && metadata.clips && Array.isArray(metadata.clips)) {
+            // Update each clip with metadata
+            for (const clipMetadata of metadata.clips) {
+              const clipS3Key = clipMetadata.s3_key;
+              const correspondingClip = data?.find(clip => clip.s3_key === clipS3Key);
+              
+              if (correspondingClip) {
+                                   const { error: updateError } = await supabase
+                     .from("clips")
+                     .update({
+                       virality_score: clipMetadata.virality_score,
+                       transcript: clipMetadata.transcript
+                     })
+                     .eq("id", correspondingClip.id);
+                
+                if (updateError) {
+                  console.error(`Failed to update clip ${correspondingClip.id}:`, updateError);
+                } else {
+                  console.log(`Successfully updated clip ${correspondingClip.id} with metadata`);
+                }
+              }
+            }
+            
+            // Delete metadata.json file after successful update
+            await deleteFromS3(metadataKey);
+            console.log("Metadata file deleted successfully");
+          }
+        } catch (metadataError) {
+          console.error("Failed to process metadata:", metadataError);
+          // Don't fail the entire process if metadata reading fails
         }
       }
 
@@ -231,243 +296,6 @@ export const clipVideo = inngest.createFunction(
   }
 );
 
-export const clipYouTubeVideoWorkflow = inngest.createFunction(
-  {
-    id: "clip-youtube-video-workflow",
-    concurrency: {
-      limit: 1,
-      key: "event.data.uploadedFileId",
-    },
-    retries: 0,
-  },
-  { event: "clip-youtube-video-workflow" },
-  async ({ event, step }) => {
-    const { uploadedFileId, userId, youtubeUrl, uuid } = event.data;
-
-    const supabase = createServiceClient();
-
-    const userCredits = await step.run("check-user-credits", async () => {
-      const { data, error } = await supabase
-        .from("users")
-        .select("credits")
-        .eq("id", userId)
-        .single();
-
-      if (error || !data) {
-        throw new Error(`Failed to get user credits: ${error?.message}`);
-      }
-
-      return data.credits;
-    });
-
-    if (userCredits <= 0) {
-      await step.run("update-to-no-credits", async () => {
-        const { error } = await supabase
-          .from("uploaded_files")
-          .update({ status: "no credits" })
-          .eq("id", uploadedFileId);
-
-        if (error) {
-          throw new Error("Failed to update uploaded file status");
-        }
-      });
-
-      return { success: false, reason: "no credits" };
-    }
-
-    try {
-      const transcriptResult = await step.fetch(
-        `${process.env.NEXT_PUBLIC_YOUTUBE_DOWNLOADER_ENDPOINT}/diarize`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${process.env.YOUTUBE_DOWNLOADER_AUTH}`,
-          },
-          body: JSON.stringify({
-            youtubeUrl,
-            uuid,
-          }),
-        }
-      );
-
-      if (!transcriptResult.ok) {
-        const errorText = await transcriptResult.text();
-        throw new Error(
-          `Diarization failed: ${transcriptResult.status} - ${errorText}`
-        );
-      }
-
-      const transcriptData = await transcriptResult.json();
-      const transcriptS3Key = transcriptData.transcript_s3_key;
-
-      console.log("Transcription completed:", transcriptData);
-
-      const viralMomentsResult = await step.fetch(
-        `${process.env.NEXT_PUBLIC_YOUTUBE_DOWNLOADER_ENDPOINT}/viral-moments`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${process.env.YOUTUBE_DOWNLOADER_AUTH}`,
-          },
-          body: JSON.stringify({
-            transcript_s3_key: transcriptS3Key,
-            uuid,
-          }),
-        }
-      );
-
-      if (!viralMomentsResult.ok) {
-        const errorText = await viralMomentsResult.text();
-        throw new Error(
-          `Viral moments generation failed: ${viralMomentsResult.status} - ${errorText}`
-        );
-      }
-
-      const viralMomentsData = await viralMomentsResult.json();
-      const viralMoments = viralMomentsData.viral_moments;
-
-      console.log("Viral moments generated:", viralMomentsData);
-
-      if (!viralMoments || viralMoments.length === 0) {
-        await step.run("update-to-no-clips", async () => {
-          await supabase
-            .from("uploaded_files")
-            .update({ status: "failed" })
-            .eq("id", uploadedFileId);
-        });
-        return { success: false, reason: "no viral moments found" };
-      }
-
-      const segmentsResult = await step.fetch(
-        `${process.env.NEXT_PUBLIC_YOUTUBE_DOWNLOADER_ENDPOINT}/download-segments`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${process.env.YOUTUBE_DOWNLOADER_AUTH}`,
-          },
-          body: JSON.stringify({
-            youtubeUrl,
-            segments: viralMoments,
-            uuid,
-          }),
-        }
-      );
-
-      if (!segmentsResult.ok) {
-        const errorText = await segmentsResult.text();
-        throw new Error(
-          `Segment download failed: ${segmentsResult.status} - ${errorText}`
-        );
-      }
-
-      const segmentsData = await segmentsResult.json();
-      // const segments = segmentsData.segments;
-
-      console.log("Video segments downloaded:", segmentsData);
-
-      // Comment out Modal backend call for testing
-      // const processResult = await step.fetch(`${process.env.MODAL_PROCESS_SEGMENTS_ENDPOINT}`, {
-      //   method: "POST",
-      //   headers: {
-      //     "Content-Type": "application/json",
-      //     Authorization: `Bearer ${process.env.MODAL_AUTH_TOKEN}`,
-      //   },
-      //   body: JSON.stringify({
-      //     segments: segments.map((seg: any) => ({
-      //       s3_key: seg.s3_key,
-      //       start_time: seg.start_time,
-      //       end_time: seg.end_time,
-      //     })),
-      //     uuid,
-      //     transcript_s3_key: transcriptS3Key,
-      //   }),
-      // });
-
-      // if (!processResult.ok) {
-      //   const errorText = await processResult.text();
-      //   throw new Error(`Segment processing failed: ${processResult.status} - ${errorText}`);
-      // }
-
-      // const processData = await processResult.json();
-
-      // console.log("Segments processed successfully:", processData);
-
-      const result = await step.run("save-clips-to-db", async () => {
-        // Instead of getting clips from S3, create an arbitrary clip for testing
-        const arbitraryClip = {
-          s3_key: `${uuid}/clip_test_${Date.now()}.mp4`,
-          uploaded_file_id: uploadedFileId,
-          user_id: userId,
-        };
-
-        const { data, error } = await supabase
-          .from("clips")
-          .insert([arbitraryClip])
-          .select();
-
-        if (error) {
-          throw new Error(`Failed to insert clips: ${error.message}`);
-        } else {
-          console.log("Clips saved to database:", data);
-        }
-
-        console.log("Arbitrary clip added:", arbitraryClip);
-        console.log("Clips found:", 1);
-
-        return { clipsFound: 1, alreadyExisted: false };
-      });
-
-      if (result.clipsFound > 0) {
-        await step.run("update-credits", async () => {
-          await supabase
-            .from("users")
-            .update({
-              credits: Math.max(0, userCredits - result.clipsFound),
-            })
-            .eq("id", userId);
-        });
-
-        await step.run("update-to-processed", async () => {
-          const { error } = await supabase
-            .from("uploaded_files")
-            .update({ status: "processed" })
-            .eq("id", uploadedFileId);
-          if (error) {
-            throw new Error("Failed to update uploaded file status");
-          }
-        });
-      } else {
-        await step.run("update-to-error", async () => {
-          await supabase
-            .from("uploaded_files")
-            .update({ status: "failed" })
-            .eq("id", uploadedFileId);
-        });
-      }
-
-      return {
-        success: true,
-        message: "YouTube video workflow completed successfully",
-        clips_processed: result.clipsFound,
-        uuid,
-      };
-    } catch (error) {
-      console.error("YouTube workflow error:", error);
-
-      await step.run("update-to-failed", async () => {
-        await supabase
-          .from("uploaded_files")
-          .update({ status: "failed" })
-          .eq("id", uploadedFileId);
-      });
-
-      throw error;
-    }
-  }
-);
 
 export const testStepFetch = inngest.createFunction(
   { id: "test-step-fetch" },
@@ -508,4 +336,57 @@ async function getClips(prefix: string) {
 
   const response = await s3Client.send(command);
   return response.Contents?.map((item) => item.Key).filter(Boolean) || [];
+}
+
+async function getMetadataFromS3(metadataKey: string) {
+  const s3Client = new S3Client({
+    region: process.env.AWS_REGION!,
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+    },
+  });
+
+  try {
+    const command = new GetObjectCommand({
+      Bucket: process.env.S3_BUCKET_NAME!,
+      Key: metadataKey,
+    });
+
+    const response = await s3Client.send(command);
+    const metadataString = await response.Body?.transformToString();
+    
+    if (!metadataString) {
+      throw new Error("Empty metadata file");
+    }
+
+    return JSON.parse(metadataString);
+  } catch (error) {
+    console.error("Failed to get metadata from S3:", error);
+    throw error;
+  }
+}
+
+async function deleteFromS3(s3Key: string) {
+  const s3Client = new S3Client({
+    region: process.env.AWS_REGION!,
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+    },
+  });
+
+  try {
+    const { DeleteObjectCommand } = await import("@aws-sdk/client-s3");
+    const command = new DeleteObjectCommand({
+      Bucket: process.env.S3_BUCKET_NAME!,
+      Key: s3Key,
+    });
+
+    await s3Client.send(command);
+    console.log(`Successfully deleted ${s3Key} from S3`);
+  } catch (error) {
+    console.error("Failed to delete from S3:", error);
+    throw error;
+  }
 }

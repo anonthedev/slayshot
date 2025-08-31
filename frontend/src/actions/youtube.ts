@@ -3,6 +3,7 @@
 import { inngest } from "@/inngest/client";
 import { auth } from "@/lib/auth";
 import { supabaseClient } from "@/lib/supabase";
+import { LayoutType, BaitVideoType } from "@/lib/constants";
 import { v4 as uuidv4 } from "uuid";
 
 // Extracts YouTube video ID from any valid YouTube URL
@@ -33,7 +34,7 @@ function extractYouTubeVideoId(url: string): string | null {
   }
 }
 
-export async function processYouTubeVideo(youtubeUrl: string, startTime: number, endTime: number) {
+export async function processYouTubeVideo(youtubeUrl: string, startTime: number, endTime: number, layout: LayoutType = "full", baitVideo: BaitVideoType = "minecraft_night") {
   const session = await auth();
   if (!session) throw new Error("Unauthorized");
 
@@ -88,7 +89,9 @@ export async function processYouTubeVideo(youtubeUrl: string, startTime: number,
       uploaded: true,
       start_time: startTime,
       end_time: endTime,
-      source_url: youtubeUrl
+      source_url: youtubeUrl,
+      layout: layout,
+      bait_video: baitVideo
     })
     .select("id")
     .single();
@@ -117,6 +120,8 @@ export async function processYouTubeVideo(youtubeUrl: string, startTime: number,
       uuid: sessionUuid,
       startTime,
       endTime,
+      layout,
+      baitVideo,
     }
   });
 

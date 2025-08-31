@@ -4,11 +4,13 @@ import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Separator } from "./ui/separator";
 import { toast } from "sonner";
-import { X, Play, Clock } from "lucide-react";
+import { X, Play, Clock, Loader2 } from "lucide-react";
 import { processYouTubeVideo } from "@/actions/youtube";
+import { LAYOUT_OPTIONS, BAIT_VIDEO_OPTIONS, LayoutType, BaitVideoType } from "@/lib/constants";
 
 interface YouTubeVideoDetails {
   id: string;
@@ -73,6 +75,8 @@ export default function YouTubeVideoModal({
   const [endTimeInput, setEndTimeInput] = useState("0:00");
   const [userCredits, setUserCredits] = useState(0);
   const [creditsLoading, setCreditsLoading] = useState(true);
+  const [layout, setLayout] = useState<LayoutType>("full");
+  const [baitVideo, setBaitVideo] = useState<BaitVideoType>("minecraft_night");
 
   useEffect(() => {
     if (isOpen && videoUrl) {
@@ -180,7 +184,9 @@ export default function YouTubeVideoModal({
 
   const calculateRequiredCredits = (): number => {
     const durationInSeconds = endTime - startTime;
-    return Math.ceil(durationInSeconds / 60); // 1 credit per minute, rounded up
+    const baseCredits = Math.ceil(durationInSeconds / 60); // 1 credit per minute, rounded up
+    const splitSurcharge = layout === "split" ? 5 : 0; // 5 extra credits for split layout
+    return baseCredits + splitSurcharge;
   };
 
   const hasEnoughCredits = (): boolean => {
@@ -210,7 +216,7 @@ export default function YouTubeVideoModal({
       // Always pass canonical YouTube URL (https://youtube.com/watch?v=ID)
       const videoId = extractYouTubeVideoId(videoDetails.url);
       const canonicalUrl = videoId ? `https://youtube.com/watch?v=${videoId}` : videoDetails.url;
-      await processYouTubeVideo(canonicalUrl, startTime, endTime);
+      await processYouTubeVideo(canonicalUrl, startTime, endTime, layout, baitVideo);
 
       toast.success("Video processing started successfully!");
       onClose();
@@ -266,6 +272,50 @@ export default function YouTubeVideoModal({
 
               <Separator />
 
+              {/* Layout Selection */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Video Layout</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4">
+                    <div className="space-y-2 w-full">
+                      <Label htmlFor="layout">Layout Type</Label>
+                      <Select value={layout} onValueChange={(value) => setLayout(value as LayoutType)}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select layout type" />
+                        </SelectTrigger>
+                        <SelectContent className="w-full">
+                          {LAYOUT_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    {layout === "split" && (
+                      <div className="space-y-2 w-full">
+                        <Label htmlFor="bait-video">Background Video</Label>
+                        <Select value={baitVideo} onValueChange={(value) => setBaitVideo(value as BaitVideoType)}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select background video" />
+                          </SelectTrigger>
+                          <SelectContent className="w-full">
+                            {BAIT_VIDEO_OPTIONS.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
               {/* Time Range Selection */}
               <Card>
                 <CardHeader>
@@ -315,11 +365,25 @@ export default function YouTubeVideoModal({
                       </div>
                     ) : (
                       <div className="mt-2 pt-2 border-t border-border">
-                        <p className="text-sm">
-                          <span className="font-medium">Credits required:</span>{" "}
-                          {calculateRequiredCredits()} ({formatTime(endTime - startTime)} = {Math.ceil((endTime - startTime) / 60)} min)
-                        </p>
-                        <p className={`text-xs ${hasEnoughCredits() ? 'text-green-600' : 'text-red-600'}`}>
+                        <div className="text-sm space-y-1">
+                          <div className="flex justify-between">
+                            <span className="font-medium">Credits required:</span>
+                            <span className="font-medium">{calculateRequiredCredits()}</span>
+                          </div>
+                          <div className="text-xs text-muted-foreground space-y-0.5">
+                            <div className="flex justify-between">
+                              <span>Base ({formatTime(endTime - startTime)} = {Math.ceil((endTime - startTime) / 60)} min):</span>
+                              <span>{Math.ceil((endTime - startTime) / 60)} credits</span>
+                            </div>
+                            {layout === "split" && (
+                              <div className="flex justify-between">
+                                <span>Split layout surcharge:</span>
+                                <span>+5 credits</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <p className={`text-xs mt-2 ${hasEnoughCredits() ? 'text-green-600' : 'text-red-600'}`}>
                           Your credits: {userCredits} {!hasEnoughCredits() && `(Need ${calculateRequiredCredits() - userCredits} more)`}
                         </p>
                       </div>
@@ -340,7 +404,7 @@ export default function YouTubeVideoModal({
                 >
                   {processing ? (
                     <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       Processing...
                     </>
                   ) : !hasEnoughCredits() ? (

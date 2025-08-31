@@ -4,6 +4,7 @@ import json
 import os
 import pathlib
 import pickle
+import random
 import shutil
 import subprocess
 import uuid
@@ -33,6 +34,8 @@ class ProcessVideoRequest(BaseModel):
     uuid: str | None = None  # UUID for organizing files in S3 (required for YouTube URLs)
     start_time: float | None = None  # Start time in seconds (optional)
     end_time: float | None = None  # End time in seconds (optional)
+    layout: str | None = "full"  # "full" for full screen, "split" for top-half video with bottom gameplay
+    bait_video: str | None = "minecraft_night"  # gameplay asset key name under gameplay/
 
 class TranscribeAudioRequest(BaseModel):
     s3_key: str  # S3 key pointing to the audio file
@@ -41,11 +44,14 @@ class SegmentInfo(BaseModel):
     s3_key: str  # S3 key for the video segment
     start_time: float  # Start time in seconds
     end_time: float  # End time in seconds
+    virality_score: int | None = None  # Virality score from 1-10
 
 class ProcessSegmentsRequest(BaseModel):
     segments: list[SegmentInfo]  # Array of segment info with S3 keys and timings
     uuid: str  # UUID for organizing output clips in S3
     transcript_s3_key: str  # S3 key for the full transcript JSON file
+    layout: str | None = "full"  # "full" for full screen, "split" for top-half video with bottom gameplay
+    bait_video: str | None = "minecraft_night"  # gameplay asset key name under gameplay/
 
 image = (modal.Image
          .from_registry("nvidia/cuda:12.4.0-devel-ubuntu22.04", add_python="3.12")
@@ -61,6 +67,9 @@ image = (modal.Image
              "mkdir -p /usr/share/fonts/truetype/custom", 
              "wget -O /usr/share/fonts/truetype/custom/Montserrat-Bold.ttf https://github.com/JulietaUla/Montserrat/raw/refs/heads/master/fonts/ttf/Montserrat-Bold.ttf", 
              "fc-cache -f -v"
+            ])
+            .run_commands([
+             "pip install --upgrade yt-dlp"
             ])
         .add_local_dir("asd", "/asd", copy=True)
         .add_local_file("./cookies.txt", remote_path="/root/cookies.txt")
@@ -161,6 +170,202 @@ def create_potrait_vid(tracks, scores, pyframes_path, pyavi_path, audio_path, ou
     
     subprocess.run(stitch_audio_cmd, shell=True, check=True, text=True)
             
+# NEW: top-half composition variant for b-roll (with optional bottom gameplay fill)
+
+def create_potrait_vid_top_half(tracks, scores, pyframes_path, pyavi_path, audio_path, output_path, framerate=25, bottom_video_path: str | None = None, clip_duration: float | None = None):
+    target_width = 1080
+    target_height = 1920
+    top_height = target_height // 2  # 960
+    bottom_height = target_height - top_height  # 960
+
+    flist = glob.glob(os.path.join(pyframes_path, "*.jpg"))
+    flist.sort()
+
+    faces = [[] for _ in range(len(flist))]
+
+    for tidx, track in enumerate(tracks):
+        score_array = scores[tidx]
+        for fidx, frame in enumerate(track["track"]["frame"].tolist()):
+            slice_start = max(fidx - 30, 0)
+            slice_end = max(fidx + 30, len(score_array))
+            score_slice = score_array[slice_start:slice_end]
+            avg_score = float(np.mean(score_slice) if len(score_slice) > 0 else 0)
+
+            faces[frame].append({
+                "track": tidx,
+                "score": avg_score,
+                "s": track["proc_track"]["s"][fidx],
+                "x": track["proc_track"]["x"][fidx],
+                "y": track["proc_track"]["y"][fidx]
+            })
+
+    temp_vid_path = os.path.join(pyavi_path, "video_only_top_half.mp4")
+
+    vout = None
+
+    bait_cap = None
+    bait_frame_count = 0
+    bait_fps = 25.0
+    bait_current_frame = 0
+    bait_start_frame = 0
+    bait_end_frame = 0
+    
+    if bottom_video_path and os.path.exists(bottom_video_path):
+        print(f"[DEBUG] Initializing bait video from: {bottom_video_path}")
+        bait_cap = cv2.VideoCapture(str(bottom_video_path))
+        if bait_cap.isOpened():
+            bait_frame_count = int(bait_cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            bait_fps = bait_cap.get(cv2.CAP_PROP_FPS) or 25.0
+            bait_duration = bait_frame_count / bait_fps
+            
+            # Calculate required frames for clip with margin
+            required_duration = clip_duration or 60.0  # Default to 60 seconds if not provided
+            margin_duration = 5.0  # 5 second margin
+            required_frames = int((required_duration + margin_duration) * bait_fps)
+            
+            if bait_frame_count > required_frames:
+                # Randomize start position ensuring we have enough frames
+                max_start_frame = bait_frame_count - required_frames
+                bait_start_frame = random.randint(0, max_start_frame)
+                bait_end_frame = bait_start_frame + required_frames
+                print(f"[DEBUG] Randomized bait video segment: frames {bait_start_frame}-{bait_end_frame} (duration: {required_frames/bait_fps:.2f}s)")
+            else:
+                # If bait video is shorter than needed, use the entire video and loop
+                bait_start_frame = 0
+                bait_end_frame = bait_frame_count
+                print(f"[DEBUG] Bait video shorter than required, using full duration: {bait_duration:.2f}s")
+            
+            print(f"[DEBUG] Bait video loaded: {bait_frame_count} frames at {bait_fps} fps, total duration: {bait_duration:.2f}s")
+        else:
+            print(f"[ERROR] Failed to open bait video: {bottom_video_path}")
+            bait_cap.release()
+            bait_cap = None
+    else:
+        if bottom_video_path:
+            print(f"[ERROR] Bait video file not found: {bottom_video_path}")
+        else:
+            print("[DEBUG] No bait video provided")
+
+    def read_bait_frame_resized() -> np.ndarray | None:
+        nonlocal bait_current_frame
+        
+        if bait_cap is None or bait_frame_count == 0:
+            return None
+            
+        # Calculate which frame to read within the randomized segment
+        available_frames = bait_end_frame - bait_start_frame
+        if available_frames <= 0:
+            return None
+            
+        # Calculate relative frame position within the segment
+        relative_frame = int(bait_current_frame * bait_fps / framerate) % available_frames
+        target_frame = bait_start_frame + relative_frame
+        
+        bait_cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
+        
+        ret, frame = bait_cap.read()
+        if not ret:
+            print(f"[WARNING] Failed to read bait frame {target_frame}, trying start frame {bait_start_frame}")
+            bait_cap.set(cv2.CAP_PROP_POS_FRAMES, bait_start_frame)
+            ret, frame = bait_cap.read()
+            if not ret:
+                print("[ERROR] Failed to read any bait frames")
+                return None
+        
+        bait_current_frame += 1
+        
+        h, w = frame.shape[:2]
+        # Scale to cover bottom area fully
+        scale = max(target_width / w, bottom_height / h)
+        new_w, new_h = int(w * scale), int(h * scale)
+        resized = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        
+        # Center-crop to 1080x960
+        x0 = max((new_w - target_width) // 2, 0)
+        y0 = max((new_h - bottom_height) // 2, 0)
+        cropped = resized[y0:y0 + bottom_height, x0:x0 + target_width]
+        
+        # Ensure exact dimensions
+        if cropped.shape[0] != bottom_height or cropped.shape[1] != target_width:
+            canvas = np.zeros((bottom_height, target_width, 3), dtype=np.uint8)
+            ch, cw = cropped.shape[:2]
+            oy = max((bottom_height - ch) // 2, 0)
+            ox = max((target_width - cw) // 2, 0)
+            canvas[oy:oy + ch, ox:ox + cw] = cropped
+            return canvas
+        
+        return cropped
+
+    for fidx, fname in tqdm(enumerate(flist), total=len(flist), desc="Creating top-half potrait vid"):
+        img = cv2.imread(fname)
+        if img is None:
+            continue
+
+        current_faces = faces[fidx]
+        max_score_face = max(current_faces, key=lambda face: face['score']) if current_faces else None
+        if max_score_face and max_score_face['score'] < 0:
+            max_score_face = None
+
+        if vout is None:
+            vout = ffmpegcv.VideoWriterNV(file=temp_vid_path, codec=None, fps=framerate, resize=(target_width, target_height))
+
+        # Start with a black canvas (bottom half blank by default)
+        canvas = np.zeros((target_height, target_width, 3), dtype=np.uint8)
+
+        mode = "crop" if max_score_face else "resize"
+
+        if mode == "crop":
+            # Scale so the image height fits the top half
+            scale = top_height / img.shape[0]
+            resized_img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+            frame_width = resized_img.shape[1]
+            center_x = int(max_score_face["x"] * scale if max_score_face else frame_width // 2)
+            left_x = max(min(center_x - target_width // 2, frame_width - target_width), 0)
+            # Crop a 1080x960 window from the resized frame (top area)
+            cropped_img = resized_img[0:top_height, left_x:left_x + target_width]
+            canvas[0:top_height, 0:target_width] = cropped_img
+        else:
+            # Resize to width 1080, then letterbox within the 960px top area
+            scale = target_width / img.shape[1]
+            resized_height = int(img.shape[0] * scale)
+            resized_img = cv2.resize(img, (target_width, resized_height), interpolation=cv2.INTER_AREA)
+
+            if resized_height >= top_height:
+                # Crop vertically to fit top half
+                crop_y = (resized_height - top_height) // 2
+                cropped_img = resized_img[crop_y:crop_y + top_height, :]
+                canvas[0:top_height, 0:target_width] = cropped_img
+            else:
+                # Pad vertically within the top half (black bars inside top area)
+                overlay_y = (top_height - resized_height) // 2
+                canvas[overlay_y:overlay_y + resized_height, 0:target_width] = resized_img
+
+        # Fill bottom half with bait video frame if present (b-roll case)
+        bait_frame = read_bait_frame_resized()
+        if bait_frame is not None:
+            canvas[top_height:target_height, 0:target_width] = bait_frame
+            if fidx == 0:  # Debug log for first frame
+                print(f"[DEBUG] Successfully composited bait frame into bottom half")
+        elif fidx == 0:
+            print(f"[DEBUG] No bait frame available, keeping bottom half black")
+
+        vout.write(canvas)
+
+    if vout:
+        vout.release()
+
+    if bait_cap is not None:
+        bait_cap.release()
+        print(f"[DEBUG] Released bait video capture")
+
+    stitch_audio_cmd = (
+        f"ffmpeg -y -i {temp_vid_path} -i {audio_path} "
+        f"-c:v h264 -preset fast -crf 23 -c:a aac -b:a 128k "
+        f"{output_path}"
+    )
+    subprocess.run(stitch_audio_cmd, shell=True, check=True, text=True)
+            
+
 def burn_subtitles(transcript: list, clip_start: float, clip_end: float, clip_video_path: str, output_path: str, max_words: int = 5):
     temp_dir = os.path.dirname(output_path)
     subtitle_path = os.path.join(temp_dir, "temp_subtitles.ass")
@@ -268,7 +473,7 @@ def burn_subtitles(transcript: list, clip_start: float, clip_end: float, clip_vi
     subprocess.run(ffmpeg_cmd, shell=True, check=True)
         
   
-def process_segment(base_dir: str, segment_video_path: str, uuid: str, clip_index: int, transcript: list):
+def process_segment(base_dir: str, segment_video_path: str, uuid: str, clip_index: int, transcript: list, layout: str = "full", bait_video: str | None = "minecraft_night", virality_score: int | None = None, start_time: float | None = None, end_time: float | None = None):
     """Process a pre-segmented video clip (no time cutting needed)"""
     clip_name = f"clip_{clip_index}"
     output_s3_key = f"{uuid}/clip_{clip_index}.mp4"
@@ -286,6 +491,7 @@ def process_segment(base_dir: str, segment_video_path: str, uuid: str, clip_inde
     pyframes_path = clip_dir / "pyframes"
     pyavi_path = clip_dir / "pyavi"
     audio_path = clip_dir / "pyavi" / "audio.wav"
+    bait_path = clip_dir / "pyavi" / "bait_video.mp4"
     
     pyframes_path.mkdir(exist_ok=True)
     pyavi_path.mkdir(exist_ok=True)
@@ -319,20 +525,50 @@ def process_segment(base_dir: str, segment_video_path: str, uuid: str, clip_inde
     with open(scores_path, "rb") as f:
         scores = pickle.load(f)
         
-    # Create portrait video
-    portrait_start_time = time.time()   
-    create_potrait_vid(tracks, scores, pyframes_path, pyavi_path, audio_path, vertical_mp4_path)
-    portrait_end_time = time.time()   
-    
-    print(f"Portrait video creation time: {portrait_end_time - portrait_start_time:.2f} s")
-    
-    # Burn subtitles using the provided transcript subset
-    # Get video duration
+    # If split layout, try to fetch bait gameplay video from S3 into bait_path
+    local_bait_path: str | None = None
+    if (layout or "full").lower() == "split" and bait_video:
+        try:
+            bait_key = f"gameplay/{bait_video}.mp4"  # Ensure .mp4 extension
+            print(f"Downloading bait gameplay from s3://omenclip/{bait_key} -> {bait_path}")
+            s3_client = boto3.client("s3")
+            s3_client.download_file("omenclip", bait_key, str(bait_path))
+            if bait_path.exists() and bait_path.stat().st_size > 0:
+                local_bait_path = str(bait_path)
+                print(f"[DEBUG] Bait video downloaded successfully: {local_bait_path} ({bait_path.stat().st_size} bytes)")
+            else:
+                print("Bait video download resulted in empty file; using blank bottom area")
+        except Exception as e:
+            print(f"Failed to download bait gameplay video: {e}")
+            # Try without .mp4 extension as fallback
+            try:
+                bait_key = f"gameplay/{bait_video}"
+                print(f"Retrying download from s3://omenclip/{bait_key} -> {bait_path}")
+                s3_client.download_file("omenclip", bait_key, str(bait_path))
+                if bait_path.exists() and bait_path.stat().st_size > 0:
+                    local_bait_path = str(bait_path)
+                    print(f"[DEBUG] Bait video downloaded successfully on retry: {local_bait_path} ({bait_path.stat().st_size} bytes)")
+            except Exception as e2:
+                print(f"Fallback download also failed: {e2}")
+
+    # Get video duration for bait video randomization
     result = subprocess.run(
         f"ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 {segment_video_path}",
         shell=True, capture_output=True, text=True
     )
     duration = float(result.stdout.strip()) if result.stdout.strip() else 60.0
+    
+    # Create portrait video
+    portrait_start_time = time.time()   
+    if (layout or "full").lower() == "split":
+        create_potrait_vid_top_half(tracks, scores, pyframes_path, pyavi_path, audio_path, vertical_mp4_path, bottom_video_path=local_bait_path, clip_duration=duration)
+    else:
+        create_potrait_vid(tracks, scores, pyframes_path, pyavi_path, audio_path, vertical_mp4_path)
+    portrait_end_time = time.time()   
+    
+    print(f"Portrait video creation time: {portrait_end_time - portrait_start_time:.2f} s")
+    
+    # Burn subtitles using the provided transcript subset
     
     # Use the existing burn_subtitles function with the provided transcript
     burn_subtitles(transcript, 0, duration, vertical_mp4_path, subtitle_output_path, max_words=5)
@@ -342,6 +578,31 @@ def process_segment(base_dir: str, segment_video_path: str, uuid: str, clip_inde
     s3_client.upload_file(subtitle_output_path, "omenclip", output_s3_key)
     
     print(f"Segment {clip_index} uploaded to S3: {output_s3_key}")
+    
+    # Return metadata for this clip (to be collected and written to metadata.json)
+    clip_metadata = {
+        "clip_index": clip_index,
+        "s3_key": output_s3_key,
+        "transcript": transcript_to_string(transcript),
+        "start_time": start_time,
+        "end_time": end_time,
+        "virality_score": virality_score
+    }
+    
+    return clip_metadata
+
+def transcript_to_string(transcript: list) -> str:
+    """Convert diarized transcript (list of word objects) to a simple string"""
+    if not transcript:
+        return ""
+    
+    words = []
+    for word_segment in transcript:
+        word = word_segment.get("word", "").strip()
+        if word:
+            words.append(word)
+    
+    return " ".join(words)
 
 def filter_transcript_by_time(transcript: list, start_time: float, end_time: float) -> list:
     """Filter transcript to only include words within the specified time range"""
@@ -358,7 +619,7 @@ def filter_transcript_by_time(transcript: list, start_time: float, end_time: flo
             filtered.append(adjusted_segment)
     return filtered
 
-def process_clip(base_dir: str, original_video_path: str, uuid_or_s3_key: str, start_time:float, end_time:float, clip_index: int, transcript:list, is_uuid: bool = False):
+def process_clip(base_dir: str, original_video_path: str, uuid_or_s3_key: str, start_time:float, end_time:float, clip_index: int, transcript:list, is_uuid: bool = False, layout: str = "full", bait_video: str | None = "minecraft_night", virality_score: int | None = None):
     clip_name = f"clip_{clip_index}"
     
     if is_uuid:
@@ -383,13 +644,14 @@ def process_clip(base_dir: str, original_video_path: str, uuid_or_s3_key: str, s
     pyframes_path = clip_dir / "pyframes"
     pyavi_path = clip_dir / "pyavi"
     audio_path = clip_dir / "pyavi" / "audio.wav"
+    bait_path = clip_dir / "pyavi" / "bait_video.mp4"
     
     pyframes_path.mkdir(exist_ok=True)
     pyavi_path.mkdir(exist_ok=True)
     
-    duration = end_time - start_time
+    clip_duration = end_time - start_time
     
-    cut_command = (f"ffmpeg -i {original_video_path} -ss {start_time} -t {duration} " f"{clip_segment_path}")
+    cut_command = (f"ffmpeg -i {original_video_path} -ss {start_time} -t {clip_duration} " f"{clip_segment_path}")
     
     subprocess.run(cut_command, shell=True, check=True, capture_output=True, text=True)
     
@@ -420,7 +682,36 @@ def process_clip(base_dir: str, original_video_path: str, uuid_or_s3_key: str, s
         
     potrait_start_time = time.time()   
         
-    create_potrait_vid(tracks, scores, pyframes_path, pyavi_path, audio_path, vertical_mp4_path)
+    # If split layout, try to fetch bait gameplay video from S3 into bait_path
+    local_bait_path: str | None = None
+    if (layout or "full").lower() == "split" and bait_video:
+        try:
+            bait_key = f"gameplay/{bait_video}.mp4"  # Ensure .mp4 extension
+            print(f"Downloading bait gameplay from s3://omenclip/{bait_key} -> {bait_path}")
+            s3_client = boto3.client("s3")
+            s3_client.download_file("omenclip", bait_key, str(bait_path))
+            if bait_path.exists() and bait_path.stat().st_size > 0:
+                local_bait_path = str(bait_path)
+                print(f"[DEBUG] Bait video downloaded successfully: {local_bait_path} ({bait_path.stat().st_size} bytes)")
+            else:
+                print("Bait video download resulted in empty file; using blank bottom area")
+        except Exception as e:
+            print(f"Failed to download bait gameplay video: {e}")
+            # Try without .mp4 extension as fallback
+            try:
+                bait_key = f"gameplay/{bait_video}"
+                print(f"Retrying download from s3://omenclip/{bait_key} -> {bait_path}")
+                s3_client.download_file("omenclip", bait_key, str(bait_path))
+                if bait_path.exists() and bait_path.stat().st_size > 0:
+                    local_bait_path = str(bait_path)
+                    print(f"[DEBUG] Bait video downloaded successfully on retry: {local_bait_path} ({bait_path.stat().st_size} bytes)")
+            except Exception as e2:
+                print(f"Fallback download also failed: {e2}")
+    
+    if (layout or "full").lower() == "split":
+        create_potrait_vid_top_half(tracks, scores, pyframes_path, pyavi_path, audio_path, vertical_mp4_path, bottom_video_path=local_bait_path, clip_duration=clip_duration)
+    else:
+        create_potrait_vid(tracks, scores, pyframes_path, pyavi_path, audio_path, vertical_mp4_path)
     
     potrait_end_time = time.time()   
     
@@ -430,6 +721,18 @@ def process_clip(base_dir: str, original_video_path: str, uuid_or_s3_key: str, s
     
     s3_client = boto3.client("s3")
     s3_client.upload_file(subtitle_output_path, "omenclip", output_s3_key)
+    
+    # Return metadata for this clip (to be collected and written to metadata.json)
+    clip_metadata = {
+        "clip_index": clip_index,
+        "s3_key": output_s3_key,
+        "transcript": transcript_to_string(transcript),
+        "start_time": start_time,
+        "end_time": end_time,
+        "virality_score": virality_score
+    }
+    
+    return clip_metadata
 
 @app.cls(gpu="L40S", timeout=85000, retries=0, scaledown_window=20, secrets=[modal.Secret.from_name("omen-clipper-secret")], volumes={mount_path: volume})
 class OmenClipper:
@@ -457,6 +760,7 @@ class OmenClipper:
 
             def seconds_to_hhmmss(seconds):
                 return str(timedelta(seconds=int(seconds)))
+            
             
             command = [
                 "yt-dlp",
@@ -501,7 +805,7 @@ class OmenClipper:
             print(f"[ERROR] Exception during download: {str(e)}")
             return False
 
-    
+        
     def upload_to_s3(self, file_path: str, bucket_name: str, s3_key: str) -> bool:
         """
         Upload a file to S3 bucket
@@ -514,7 +818,7 @@ class OmenClipper:
         except Exception as e:
             print(f"Failed to upload to S3: {str(e)}")
             return False
-    
+        
     def transcription(self, base_dir: str, video_path: str)-> str:
         audio_path = base_dir / "audio.wav"
         extract_cmd = f"ffmpeg -i {video_path} -vn -acodec pcm_s16le -ar 16000 -ac 1 {audio_path}"
@@ -539,7 +843,7 @@ class OmenClipper:
                 })
                 
         return json.dumps(segments)
-    
+        
     def transcribe_audio_file(self, audio_s3_key: str) -> str:
         """
         Transcribe an audio file directly from S3 using WhisperX
@@ -609,12 +913,20 @@ Output Format (Must be valid for json.loads in Python):
 
 Return a list of JSON objects, each representing a clip:
 
-[{"start": seconds, "end": seconds}, ...clip2, clip3]
+[{"start": seconds, "end": seconds, "virality_score": score}, ...clip2, clip3]
 
 - "start" and "end" must use only the timestamps from the transcript.
+- "virality_score" must be an integer from 1-10, where 10 is most viral-worthy (extremely engaging, shareable, quotable) and 1 is least viral-worthy (still good but less compelling).
 - Aim to extract 40–60s clips where possible.
 - Do not include any extra metadata or output — only the JSON list.
 - You must always return at least 1 clip. But try to return as many as possible.
+
+Virality Score Guidelines:
+- 9-10: Explosive moments, shocking revelations, extremely funny, deeply emotional, or highly quotable
+- 7-8: Very engaging content, strong opinions, memorable insights, good humor
+- 5-6: Solid content, interesting discussions, moderate engagement potential
+- 3-4: Decent content but less compelling, standard conversations
+- 1-2: Lowest priority clips, filler content
 
 If no valid clips are found:
 
@@ -633,7 +945,7 @@ The transcript is as follows:\n\n""" + str(transcript)
         
         # return response.output_text
         
-    
+        
     @modal.fastapi_endpoint(method="POST")
     def process_video(self, request: ProcessVideoRequest, token: HTTPAuthorizationCredentials = Depends(auth_scheme)):
         if token.credentials != os.environ["AUTH_TOKEN"]:
@@ -708,6 +1020,8 @@ The transcript is as follows:\n\n""" + str(transcript)
         # Determine if we're using UUID-based structure (YouTube) or S3 key structure
         is_youtube_processing = request.youtube_url is not None
         uuid_or_s3_key = request.uuid if is_youtube_processing else s3_key
+        layout_value = (request.layout or "full").lower()
+        bait_value = request.bait_video or "minecraft_night"
         
         def process_single_clip(clip_data):
             """Process a single clip - used for concurrent execution"""
@@ -715,13 +1029,28 @@ The transcript is as follows:\n\n""" + str(transcript)
             
             try:
                 if "start" in moment and "end" in moment:
-                    print(f"Processing clip {index} from {moment['start']} to {moment['end']}")
-                    process_clip(base_dir, video_path, uuid_or_s3_key, moment["start"], moment["end"], index, transcript, is_uuid=is_youtube_processing)
+                    virality_score = moment.get("virality_score")
+                    print(f"Processing clip {index} from {moment['start']} to {moment['end']} (virality: {virality_score})")
+                    clip_metadata = process_clip(
+                        base_dir, 
+                        video_path, 
+                        uuid_or_s3_key, 
+                        moment["start"], 
+                        moment["end"], 
+                        index, 
+                        transcript, 
+                        is_uuid=is_youtube_processing, 
+                        layout=layout_value, 
+                        bait_video=bait_value,
+                        virality_score=virality_score
+                    )
                     
                     processed_clip = {
                         "index": index,
                         "start_time": moment["start"],
-                        "end_time": moment["end"]
+                        "end_time": moment["end"],
+                        "virality_score": virality_score,
+                        "metadata": clip_metadata
                     }
                     
                     print(f"Successfully processed clip {index}")
@@ -729,7 +1058,7 @@ The transcript is as follows:\n\n""" + str(transcript)
                 else:
                     print(f"Skipping clip {index} - missing start or end time")
                     return None
-                    
+                
             except Exception as e:
                 print(f"Error processing clip {index}: {str(e)}")
                 raise Exception(f"Failed to process clip {index}: {str(e)}")
@@ -763,12 +1092,42 @@ The transcript is as follows:\n\n""" + str(transcript)
             # Sort processed clips by index to maintain order
             processed_clips.sort(key=lambda x: x["index"])
             print(f"All clips processed successfully!")
+            
+            # Generate and upload metadata.json file
+            metadata_s3_key = None
+            if processed_clips:
+                metadata = {
+                    "clips": [clip["metadata"] for clip in processed_clips if "metadata" in clip]
+                }
+                
+                # Upload metadata.json to S3
+                metadata_path = base_dir / "metadata.json"
+                with open(metadata_path, 'w') as f:
+                    json.dump(metadata, f, indent=2)
+                
+                # Determine the correct folder for metadata based on processing type
+                if is_youtube_processing:
+                    # For YouTube processing, use UUID directly
+                    metadata_s3_key = f"{uuid_or_s3_key}/metadata.json"
+                else:
+                    # For S3 key processing, use the directory part only
+                    s3_key_dir = os.path.dirname(uuid_or_s3_key)
+                    metadata_s3_key = f"{s3_key_dir}/metadata.json"
+                s3_client = boto3.client("s3")
+                s3_client.upload_file(str(metadata_path), "omenclip", metadata_s3_key)
+                print(f"Metadata uploaded to S3: {metadata_s3_key}")
         
         if base_dir.exists():
             print(f"Cleaning up temp dir {base_dir}")
             shutil.rmtree(base_dir, ignore_errors=True)
             
-        return {"success": True, "clip_count": len(processed_clips), "run_id": run_id, "processed_clips": processed_clips}
+        return {
+            "success": True, 
+            "clip_count": len(processed_clips), 
+            "run_id": run_id, 
+            "processed_clips": processed_clips,
+            "metadata_s3_key": metadata_s3_key
+        }
 
     @modal.fastapi_endpoint(method="POST")
     def transcribe_audio(self, request: TranscribeAudioRequest, token: HTTPAuthorizationCredentials = Depends(auth_scheme)):
@@ -828,6 +1187,9 @@ The transcript is as follows:\n\n""" + str(transcript)
             
             print(f"Full transcript loaded with {len(full_transcript)} words")
             
+            layout_value = (request.layout or "full").lower()
+            bait_value = request.bait_video or "minecraft_night"
+            
             def process_single_segment(segment_data):
                 """Process a single segment - used for concurrent execution"""
                 index, segment_info = segment_data
@@ -854,14 +1216,26 @@ The transcript is as follows:\n\n""" + str(transcript)
                     
                     # Process the segment (create portrait video, burn subtitles, upload)
                     print(f"Processing segment {index} into portrait video...")
-                    process_segment(base_dir, segment_path, request.uuid, index, segment_transcript)
+                    clip_metadata = process_segment(
+                        base_dir, 
+                        segment_path, 
+                        request.uuid, 
+                        index, 
+                        segment_transcript, 
+                        layout=layout_value, 
+                        bait_video=bait_value,
+                        virality_score=getattr(segment_info, 'virality_score', None),
+                        start_time=segment_info.start_time,
+                        end_time=segment_info.end_time
+                    )
                     
                     processed_clip = {
                         "index": index,
                         "original_s3_key": segment_info.s3_key,
                         "output_s3_key": f"{request.uuid}/clip_{index}.mp4",
                         "start_time": segment_info.start_time,
-                        "end_time": segment_info.end_time
+                        "end_time": segment_info.end_time,
+                        "metadata": clip_metadata
                     }
                     
                     print(f"Successfully processed segment {index}")
@@ -900,10 +1274,25 @@ The transcript is as follows:\n\n""" + str(transcript)
             
             print(f"All segments processed successfully!")
             
+            # Generate metadata.json file
+            metadata = {
+                "clips": [clip["metadata"] for clip in processed_clips if "metadata" in clip]
+            }
+            
+            # Upload metadata.json to S3
+            metadata_path = base_dir / "metadata.json"
+            with open(metadata_path, 'w') as f:
+                json.dump(metadata, f, indent=2)
+            
+            metadata_s3_key = f"{request.uuid}/metadata.json"
+            s3_client.upload_file(str(metadata_path), "omenclip", metadata_s3_key)
+            print(f"Metadata uploaded to S3: {metadata_s3_key}")
+            
             return {
                 "success": True,
                 "clip_count": len(processed_clips),
                 "processed_clips": processed_clips,
+                "metadata_s3_key": metadata_s3_key,
                 "uuid": request.uuid
             }
             
@@ -927,12 +1316,16 @@ def main():
     
     # Example of using a YouTube URL with time range
     payload={
-        # "youtube_url": "https://www.youtube.com/watch?v=qP0zM0bq3eo",
-        # "uuid": "010882aa-c6ee-4b10-9ee9-03fba1199eff",
+        "youtube_url": "https://www.youtube.com/watch?v=wG107SPAs4E",
+        "uuid": "010882aa-c6ee-4b10-9ee9-03fba1199eff",
         # "start_time": 0,
-        # "end_time": 200
+        # "end_time": 200,
+        "layout": "full",
+        # "bait_video": "minecraft_night",
 
-        "s3_key": "test1/input1.mp4"
+        # "s3_key": "test1/input1.mp4",
+        # "layout": "split",
+        # "bait_video": "minecraft_night",
     }
     
     # Example of using the audio transcription endpoint:
@@ -970,7 +1363,9 @@ def main():
     #     }
     # ],
     #     "uuid": "010882aa-c6ee-4b10-9ee9-03fba1199eff",
-    #     "transcript_s3_key": "010882aa-c6ee-4b10-9ee9-03fba1199eff/transcript.json"
+    #     "transcript_s3_key": "010882aa-c6ee-4b10-9ee9-03fba1199eff/transcript.json",
+    #     "layout": "split",
+    #     "bait_video": "minecraft_night",
     # }
     # segments_response = requests.post(segments_url, json=segments_payload, headers=headers)
     # segments_result = segments_response.json()
