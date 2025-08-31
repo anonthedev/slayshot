@@ -20,7 +20,7 @@ const CREDIT_PACKAGES = [
   {
     id: process.env.NEXT_PUBLIC_POLAR_PRO_PRODUCT_ID!,
     name: "Pro Pack",
-    credits: 500,
+    credits: 200,
     price: 15,
     description: "Best value for power users",
     popular: true,
