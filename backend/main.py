@@ -69,7 +69,7 @@ image = (modal.Image
              "fc-cache -f -v"
             ])
             .run_commands([
-             "pip install --upgrade yt-dlp"
+             "pip install -U yt-dlp"
             ])
         .add_local_dir("asd", "/asd", copy=True)
         .add_local_file("./cookies.txt", remote_path="/root/cookies.txt")
