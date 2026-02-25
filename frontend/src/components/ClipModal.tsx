@@ -55,7 +55,7 @@ export function ClipModal({ clip, playUrl, isOpen, onClose }: ClipModalProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4">
       {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-black/80 backdrop-blur-sm"
@@ -63,41 +63,41 @@ export function ClipModal({ clip, playUrl, isOpen, onClose }: ClipModalProps) {
       />
       
       {/* Modal */}
-      <Card className="py-0 my-0 relative max-w-4xl w-full overflow-hidden border-0 backdrop-blur-sm shadow-2xl">
+      <Card className="py-0 my-0 relative w-full max-w-sm sm:max-w-2xl lg:max-w-4xl xl:max-w-5xl max-h-[95vh] overflow-hidden border-0 backdrop-blur-sm shadow-2xl">
         {/* Close Button */}
         <Button
           onClick={onClose}
           size="icon"
           variant="ghost"
-          className="absolute top-4 right-4 z-10 h-8 w-8 rounded-full bg-black/20 hover:bg-black/40 text-white"
+          className="absolute top-2 right-2 sm:top-4 sm:right-4 z-10 h-8 w-8 rounded-full bg-black/20 hover:bg-black/40 text-white"
         >
           <X className="h-4 w-4" />
         </Button>
 
         <CardContent className="p-0">
-          <div className="flex h-[600px]">
-            {/* Left Side - Video */}
-            <div className="bg-black flex items-center justify-center">
+          <div className="flex flex-col lg:flex-row h-[90vh] sm:h-[80vh] lg:h-[600px]">
+            {/* Video Section */}
+            <div className="bg-black flex items-center justify-center flex-shrink-0 h-[50vh] sm:h-[40vh] lg:h-full lg:w-auto">
               <video
                 src={playUrl}
                 controls
                 muted
                 autoPlay
-                className="h-full aspect-[9/16] object-cover"
+                className="h-full w-full sm:w-auto sm:h-full aspect-[9/16] object-cover"
                 controlsList="nodownload"
               />
             </div>
 
-            {/* Right Side - Virality Analysis */}
-            <div className="flex-1 p-6 flex flex-col justify-start space-y-4 overflow-y-auto">
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-full bg-gradient-to-r from-primary/10 to-primary/5 p-2">
-                    <Sparkles className="h-5 w-5 text-primary" />
+            {/* Content Section - Virality Analysis */}
+            <div className="flex-1 p-3 sm:p-4 lg:p-6 flex flex-col justify-start space-y-3 sm:space-y-4 overflow-y-auto min-h-0">
+              <div className="space-y-2 sm:space-y-3">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <div className="rounded-full bg-gradient-to-r from-primary/10 to-primary/5 p-1.5 sm:p-2">
+                    <Sparkles className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-bold">Clip Analysis</h3>
-                    <p className="text-xs text-muted-foreground">
+                    <h3 className="text-base sm:text-lg font-bold">Clip Analysis</h3>
+                    <p className="text-xs sm:text-xs text-muted-foreground">
                       AI-powered virality assessment
                     </p>
                   </div>
@@ -105,13 +105,13 @@ export function ClipModal({ clip, playUrl, isOpen, onClose }: ClipModalProps) {
 
                 {/* Virality Score Display */}
                 {viralityScore !== null ? (
-                  <div className="space-y-3">
+                  <div className="space-y-2 sm:space-y-3">
                     <div className="text-center space-y-1">
-                      <div className="text-5xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+                      <div className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
                         {viralityScore}
-                        <span className="text-base text-muted-foreground">/10</span>
+                        <span className="text-sm sm:text-base text-muted-foreground">/10</span>
                       </div>
-                      <div className={`text-base font-semibold ${getViralityColor(viralityScore)}`}>
+                      <div className={`text-sm sm:text-base font-semibold ${getViralityColor(viralityScore)}`}>
                         {getViralityLabel(viralityScore)}
                       </div>
                     </div>
@@ -134,10 +134,10 @@ export function ClipModal({ clip, playUrl, isOpen, onClose }: ClipModalProps) {
                     </div>
                   </div>
                 ) : (
-                  <div className="text-center space-y-2 py-6">
+                  <div className="text-center space-y-2 py-4 sm:py-6">
                     <div className="text-muted-foreground">
-                      <Sparkles className="h-10 w-10 mx-auto mb-2 opacity-50" />
-                      <p className="text-base font-medium">No Virality Score</p>
+                      <Sparkles className="h-8 w-8 sm:h-10 sm:w-10 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm sm:text-base font-medium">No Virality Score</p>
                       <p className="text-xs">Score will be available for new clips</p>
                     </div>
                   </div>
@@ -147,7 +147,7 @@ export function ClipModal({ clip, playUrl, isOpen, onClose }: ClipModalProps) {
                 {clip.transcript && (
                   <div className="space-y-2">
                     <h4 className="text-xs font-semibold text-muted-foreground">Transcript</h4>
-                    <div className="p-3 rounded-lg bg-muted/50 max-h-24 overflow-y-auto">
+                    <div className="p-2 sm:p-3 rounded-lg bg-muted/50 max-h-20 sm:max-h-24 lg:max-h-32 overflow-y-auto">
                       <p className="text-xs text-muted-foreground leading-relaxed">
                         {clip.transcript}
                       </p>
@@ -159,14 +159,14 @@ export function ClipModal({ clip, playUrl, isOpen, onClose }: ClipModalProps) {
                 <Button
                   onClick={handleDownload}
                   className="w-full bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 shadow-lg hover:shadow-xl transition-all duration-200"
-                  size="lg"
+                  size="sm"
                 >
-                  <Download className="h-5 w-5 mr-2" />
-                  Download Clip
+                  <Download className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
+                  <span className="text-sm sm:text-base">Download Clip</span>
                 </Button>
 
                 {/* Info */}
-                <div className="text-xs text-muted-foreground space-y-1">
+                <div className="text-xs text-muted-foreground space-y-1 hidden sm:block">
                   <p>• Virality score calculated during clip generation</p>
                   <p>• Based on content analysis and engagement potential</p>
                   <p>• View transcript and download high-quality clip</p>

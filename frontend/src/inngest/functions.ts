@@ -297,29 +297,6 @@ export const clipVideo = inngest.createFunction(
 );
 
 
-export const testStepFetch = inngest.createFunction(
-  { id: "test-step-fetch" },
-  { event: "test-step-fetch-events" },
-  async ({ step }) => {
-    const healthUrl = `http://localhost:3000/api/health`;
-
-    const healthCheckResult = await step.fetch(healthUrl, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
-
-    const loggingHealth = await step.run("logging-health", async () => {
-      const healthCheckResultJson = await healthCheckResult.json();
-      console.log("Health check result:", healthCheckResultJson.message);
-      return healthCheckResultJson;
-    });
-
-    return loggingHealth;
-  }
-);
-
 async function getClips(prefix: string) {
   const s3Client = new S3Client({
     region: process.env.AWS_REGION!,

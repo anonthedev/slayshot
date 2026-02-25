@@ -26,7 +26,7 @@ function ClipCard({ clip, index, onOpenModal }: { clip: Clip; index: number; onO
     async function fetchPlayUrl() {
       try {
         const result = await getClipPlayUrl(clip.id);
-        if (result.succes && result.url) {
+        if (result.success && result.url) {
           setPlayUrl(result.url);
         } else if (result.error) {
           console.error("Failed to get play url: " + result.error);
@@ -211,7 +211,7 @@ export function Clips({ clips }: { clips: Clip[] }) {
       {selectedClip && isModalOpen && (
         <>
           {typeof window !== 'undefined' && (
-            <div className="fixed inset-0 z-[9999]">
+            <div className="absolute inset-0 z-[9999]">
               <ClipModal
                 clip={selectedClip.clip}
                 playUrl={selectedClip.playUrl}

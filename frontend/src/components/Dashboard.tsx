@@ -87,20 +87,6 @@ export default function Dashboard({
     }
   }
 
-  // const getStatusVariant = (status: string) => {
-  //   switch (status) {
-  //     case "processed":
-  //       return "default"
-  //     case "processing":
-  //       return "secondary"
-  //     case "failed":
-  //     case "no credits":
-  //       return "destructive"
-  //     default:
-  //       return "outline"
-  //   }
-  // }
-
   const getStatusColor = (status: string) => {
     switch (status) {
       case "processed":

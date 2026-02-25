@@ -101,16 +101,6 @@ export async function processYouTubeVideo(youtubeUrl: string, startTime: number,
     throw new Error("Failed to create database record");
   }
 
-  // await inngest.send({
-  //   name: "clip-youtube-video-workflow",
-  //   data: {
-  //     uploadedFileId: uploadedFileDBRecord.id,
-  //     userId: session.user.id,
-  //     youtubeUrl: youtubeUrl,
-  //     uuid: sessionUuid,
-  //   },
-  // });
-
   await inngest.send({
     name: "clip-video-events",
     data: {

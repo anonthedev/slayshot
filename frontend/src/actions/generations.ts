@@ -46,10 +46,10 @@ export async function processVideo(uploadedFileId: string) {
 
 export async function getClipPlayUrl(
   clipId: string,
-): Promise<{ succes: boolean; url?: string; error?: string }> {
+): Promise<{ success: boolean; url?: string; error?: string }> {
   const session = await auth();
   if (!session?.user?.id) {
-    return { succes: false, error: "Unauthorized" };
+    return { success: false, error: "Unauthorized" };
   }
 
   const supabase = supabaseClient(session.supabaseAccessToken as string);
@@ -79,8 +79,8 @@ export async function getClipPlayUrl(
       expiresIn: 3600,
     });
 
-    return { succes: true, url: signedUrl };
+    return { success: true, url: signedUrl };
   } catch (error) {
-    return { succes: false, error: error as string };
+    return { success: false, error: error as string };
   }
 }

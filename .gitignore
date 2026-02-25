@@ -44,6 +44,10 @@ yarn-error.log*
 *.ckpt
 *.h5
 
+# yt-dlp partial downloads
+*.ytdl
+*.part
+
 # Temporary files
 *.tmp
 *.temp

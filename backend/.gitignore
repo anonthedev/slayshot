@@ -45,6 +45,10 @@ asd/demo/
 asd/AVADataPath/
 asd/colDataPath/
 
+# yt-dlp partial downloads
+*.ytdl
+*.part
+
 # Temporary files
 *.tmp
 *.temp
