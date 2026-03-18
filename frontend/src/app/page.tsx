@@ -27,7 +27,7 @@ export default function Home() {
 
         <div className="text-sm text-muted-foreground">
           <p>
-            Check back later for the archive video.
+            The above video is a showcase of the project. Will add more videos here soon.
           </p>
         </div>
       </div>
