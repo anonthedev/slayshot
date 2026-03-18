@@ -23,7 +23,7 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # Large media files
-*.mp4
+/backedn/*.mp4
 *.avi
 *.mov
 *.mkv
