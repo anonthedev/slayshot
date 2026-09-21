@@ -1,60 +1,66 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Checkout } from '@polar-sh/nextjs';
 import { auth } from '@/lib/auth';
+import { getCreditPackage } from '@/lib/payments';
 
-// Use sandbox for testing, production for live
-const POLAR_API_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://api.polar.sh/v1/checkouts/'
-  : 'https://sandbox-api.polar.sh/v1/checkouts/';
-
-// Use the official Polar adapter for checkout creation
-export const GET = Checkout({
-  accessToken: process.env.POLAR_ACCESS_TOKEN!,
-  successUrl: process.env.NEXT_PUBLIC_BASE_URL 
-    ? `${process.env.NEXT_PUBLIC_BASE_URL}/confirmation`
-    : 'http://localhost:3000/confirmation',
-});
-
-// POST method for credit package purchases
 export async function POST(request: NextRequest) {
   try {
-    // Check if user is authenticated
     const session = await auth();
-    if (!session || !session.user) {
+    if (!session?.user?.id || !session.user.email) {
       return NextResponse.json({ error: 'Unauthorized - Please sign in' }, { status: 401 });
     }
 
     const body = await request.json();
-    const { productId } = body;
+    const creditPackage = getCreditPackage(body.productId);
 
-    if (!productId) {
-      return NextResponse.json({ error: 'Product ID is required' }, { status: 400 });
+    if (!creditPackage?.id) {
+      return NextResponse.json({ error: 'Invalid product' }, { status: 400 });
     }
 
-    // Construct base URL from request if environment variable is not set
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 
-      `${request.nextUrl.protocol}//${request.nextUrl.host}`;
+    if (!process.env.POLAR_ACCESS_TOKEN) {
+      console.error('POLAR_ACCESS_TOKEN is not configured');
+      return NextResponse.json({ error: 'Payments are unavailable' }, { status: 503 });
+    }
 
-    // Create checkout session with Polar for credit purchase
+    const polarServer = process.env.POLAR_SERVER;
+    if (polarServer !== 'sandbox' && polarServer !== 'production') {
+      console.error('POLAR_SERVER must be sandbox or production');
+      return NextResponse.json({ error: 'Payments are unavailable' }, { status: 503 });
+    }
+
+    const polarApiUrl =
+      polarServer === 'production'
+        ? 'https://api.polar.sh/v1/checkouts/'
+        : 'https://sandbox-api.polar.sh/v1/checkouts/';
+
+    const baseUrl =
+      process.env.APP_URL ??
+      (process.env.NODE_ENV === 'development'
+        ? `${request.nextUrl.protocol}//${request.nextUrl.host}`
+        : null);
+
+    if (!baseUrl) {
+      console.error('APP_URL is not configured');
+      return NextResponse.json({ error: 'Payments are unavailable' }, { status: 503 });
+    }
+
     const checkoutData = {
-      products: [productId],
-      success_url: `${baseUrl}/confirmation`,
+      products: [creditPackage.id],
+      success_url: `${baseUrl}/confirmation?checkout_id={CHECKOUT_ID}`,
       customer_email: session.user.email,
       metadata: {
         user_id: session.user.id,
-        user_email: session.user.email,
-        user_name: session.user.name || '',
-        product_id: productId // Store product ID in metadata for webhook processing
+        product_id: creditPackage.id,
       }
     };
 
-    const polarResponse = await fetch(POLAR_API_URL, {
+    const polarResponse = await fetch(polarApiUrl, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${process.env.POLAR_ACCESS_TOKEN}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(checkoutData)
+      body: JSON.stringify(checkoutData),
+      cache: 'no-store',
     });
 
     if (!polarResponse.ok) {
@@ -64,10 +70,10 @@ export async function POST(request: NextRequest) {
     }
 
     const checkout = await polarResponse.json();
-    
-    return NextResponse.json({ 
+
+    return NextResponse.json({
       checkoutUrl: checkout.url,
-      checkoutId: checkout.id 
+      checkoutId: checkout.id,
     });
 
   } catch (error) {

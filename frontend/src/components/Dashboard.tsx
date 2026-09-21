@@ -12,6 +12,7 @@ import YouTubeVideoModal from "./YouTubeVideoModal"
 import { Badge } from "@/components/ui/badge"
 import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
+import { extractYouTubeVideoId } from "@/lib/youtube-url"
 
 export default function Dashboard({
   uploadedFiles,
@@ -43,9 +44,7 @@ export default function Dashboard({
       return
     }
 
-    const youtubeRegex =
-      /^(https?:\/\/)?((www|m)\.)?(youtube\.com\/(watch\?v=|embed\/|v\/|shorts\/)|youtu\.be\/)[a-zA-Z0-9_-]{11}/
-    if (!youtubeRegex.test(youtubeUrl)) {
+    if (!extractYouTubeVideoId(youtubeUrl)) {
       toast.error("Please enter a valid YouTube URL")
       return
     }
@@ -105,7 +104,7 @@ export default function Dashboard({
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 font-inter">
       <div className="mx-auto flex max-w-7xl flex-col space-y-8 px-6 py-8">
-        {/* Upload Section */}
+        {/* YouTube import */}
         <Card className="border-2 border-dashed border-primary/20 bg-gradient-to-br from-primary/5 via-transparent to-primary/5 backdrop-blur-sm">
           <CardHeader className="text-center pb-6">
             <CardTitle className="text-2xl bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">

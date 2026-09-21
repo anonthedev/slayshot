@@ -1,10 +1,21 @@
 import { inngest } from "./client";
 import { createClient } from "@supabase/supabase-js";
 import { ListObjectsV2Command, S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import {
+  calculateRequiredCredits,
+  validateProcessingRange,
+} from "@/lib/credits";
+import type { BaitVideoType, LayoutType } from "@/lib/constants";
+import { getYouTubeVideoDetails } from "@/lib/youtube";
 
 interface UploadedFileType {
   id: string;
   s3_key: string;
+  source_url: string;
+  start_time: number;
+  end_time: number;
+  layout: LayoutType | null;
+  bait_video: BaitVideoType | null;
   users: {
     id: string;
     credits: number;
@@ -30,38 +41,7 @@ export const clipVideo = inngest.createFunction(
   },
   { event: "clip-video-events" },
   async ({ event, step }) => {
-    const { uploadedFileId, userId, youtubeUrl, uuid, startTime, endTime, layout, baitVideo } = event.data;
-
-    // Get video duration and metadata to determine if user is selecting full video
-    let videoDuration = 0;
-    let videoTitle = null;
-    let videoThumbnail = null;
-    
-    if (youtubeUrl) {
-      try {
-        const videoDetailsResponse = await step.fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/youtube/details`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ url: youtubeUrl }),
-        });
-        
-        if (videoDetailsResponse.ok) {
-          const videoDetails = await videoDetailsResponse.json();
-          videoDuration = videoDetails.duration;
-          videoTitle = videoDetails.title;
-          videoThumbnail = videoDetails.thumbnail;
-        }
-      } catch (error) {
-        console.error("Failed to get video duration:", error);
-      }
-    }
-
-    // Determine if user is selecting the full video length
-    const isFullVideo = startTime === 0 && endTime === videoDuration;
-    
-    console.log(`Processing video: startTime=${startTime}, endTime=${endTime}, videoDuration=${videoDuration}, isFullVideo=${isFullVideo}`);
+    const { uploadedFileId, userId } = event.data;
 
     const supabase = createServiceClient();
 
@@ -72,6 +52,11 @@ export const clipVideo = inngest.createFunction(
           `
           id,
           s3_key,
+          source_url,
+          start_time,
+          end_time,
+          layout,
+          bait_video,
           users(
               id,
               credits
@@ -88,7 +73,33 @@ export const clipVideo = inngest.createFunction(
       return data as unknown as UploadedFileType;
     });
 
-    if (uploadedFile.users.credits >= Math.ceil((endTime - startTime) / 60)) {
+    const videoDetails = await step.run("get-youtube-metadata", () =>
+      getYouTubeVideoDetails(uploadedFile.source_url),
+    );
+    const startTime = Number(uploadedFile.start_time);
+    const endTime = Number(uploadedFile.end_time);
+    const layout = uploadedFile.layout ?? "full";
+    const baitVideo = uploadedFile.bait_video ?? "minecraft_night";
+    const uuid = uploadedFile.s3_key.split("/")[0]!;
+
+    validateProcessingRange(startTime, endTime, videoDetails.duration);
+    const requiredCredits = calculateRequiredCredits(startTime, endTime, layout);
+    const isFullVideo =
+      startTime === 0 && endTime === videoDetails.duration;
+
+    if (uploadedFile.users.credits >= requiredCredits) {
+      await step.run("charge-credits", async () => {
+        const { error } = await supabase.rpc("charge_video_processing", {
+          p_uploaded_file_id: uploadedFileId,
+          p_user_id: userId,
+          p_credits: requiredCredits,
+        });
+
+        if (error) {
+          throw new Error(`Failed to reserve processing credits: ${error.message}`);
+        }
+      });
+
       await step.run("update-to-processing", async () => {
         const { error } = await supabase
           .from("uploaded_files")
@@ -99,83 +110,61 @@ export const clipVideo = inngest.createFunction(
         }
       });
 
-      // Update video metadata if available (for YouTube videos)
-      if (youtubeUrl && (videoTitle || videoThumbnail)) {
-        await step.run("update-video-metadata", async () => {
-          const updateData: { title?: string; thumbnail?: string } = {};
-          if (videoTitle) updateData.title = videoTitle;
-          if (videoThumbnail) updateData.thumbnail = videoThumbnail;
-          
-          const { error } = await supabase
-            .from("uploaded_files")
-            .update(updateData)
-            .eq("id", uploadedFileId);
-          if (error) {
-            console.error("Failed to update video metadata:", error);
-          }
-        });
-      }
+      await step.run("update-video-metadata", async () => {
+        const { error } = await supabase
+          .from("uploaded_files")
+          .update({
+            title: videoDetails.title,
+            thumbnail: videoDetails.thumbnail,
+            source_url: videoDetails.url,
+          })
+          .eq("id", uploadedFileId);
+        if (error) {
+          throw new Error(`Failed to update video metadata: ${error.message}`);
+        }
+      });
 
-      let payload: {
-        youtube_url?: string;
-        uuid?: string;
+      const payload: {
+        youtube_url: string;
+        uuid: string;
         start_time?: number;
         end_time?: number;
-        s3_key?: string;
-        layout?: string;
-        bait_video?: string;
+        layout: LayoutType;
+        bait_video: BaitVideoType;
+      } = {
+        youtube_url: videoDetails.url,
+        uuid,
+        layout,
+        bait_video: baitVideo,
+      };
+
+      if (!isFullVideo) {
+        payload.start_time = startTime;
+        payload.end_time = endTime;
       }
-      
-      if (youtubeUrl && uuid) {
-        // YouTube URL processing
-        payload = {
-          youtube_url: youtubeUrl,
-          uuid: uuid,
-        };
-        
-        // Only include layout if provided
-        if (layout) {
-          payload.layout = layout;
-        }
-        
-        // Only include bait_video if provided
-        if (baitVideo) {
-          payload.bait_video = baitVideo;
-        }
-        
-        // Only include time parameters if not selecting full video
-        if (!isFullVideo) {
-          payload.start_time = startTime;
-          payload.end_time = endTime;
-        } else {
-          console.log("Full video selected - not passing time parameters to modal backend");
-        }
-        
-        console.log("Payload:", payload);
-      } else {
-        // S3 key processing (existing functionality)
-        payload = {
-          s3_key: uploadedFile.s3_key,
-        };
-        
-        // Only include layout if provided
-        if (layout) {
-          payload.layout = layout;
-        }
-        
-        // Only include bait_video if provided
-        if (baitVideo) {
-          payload.bait_video = baitVideo;
-        }
+
+      if (!process.env.CLIPPER_ENDPOINT || !process.env.MODAL_AUTH_TOKEN) {
+        await refundProcessingCredits(supabase, uploadedFileId, userId);
+        throw new Error("CLIPPER_ENDPOINT and MODAL_AUTH_TOKEN are required");
       }
-      await step.fetch(`${process.env.CLIPPER_ENDPOINT}`, {
-        method: "POST",
-        body: JSON.stringify(payload),
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.MODAL_AUTH_TOKEN}`,
-        },
-      });
+
+      try {
+        const response = await step.fetch(`${process.env.CLIPPER_ENDPOINT}`, {
+          method: "POST",
+          body: JSON.stringify(payload),
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.MODAL_AUTH_TOKEN}`,
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Clipper returned ${response.status}`);
+        }
+      } catch (error) {
+        await refundProcessingCredits(supabase, uploadedFileId, userId);
+        throw error;
+      }
     } else {
       // User doesn't have enough credits
       await step.run("update-to-no-credits", async () => {
@@ -192,12 +181,7 @@ export const clipVideo = inngest.createFunction(
 
     // Only proceed with clip processing if we have enough credits
     const result = await step.run("send-clip-to-db", async () => {
-      let folderPrefix;
-      if (youtubeUrl && uuid) {
-        folderPrefix = uuid;
-      } else {
-        folderPrefix = uploadedFile.s3_key.split("/")[0]!;
-      }
+      const folderPrefix = uuid;
 
       const allKeys = await getClips(folderPrefix);
       const clipKeys = allKeys.filter((key): key is string =>
@@ -268,14 +252,6 @@ export const clipVideo = inngest.createFunction(
     });
     
     if (result.clipsFound > 0) {
-      await step.run("update-credits", async () => {
-        await supabase
-          .from("users")
-          .update({
-            credits: uploadedFile.users.credits - Math.ceil((endTime - startTime) / 60)
-          })
-          .eq("id", userId);
-      });
       await step.run("update-to-processed", async () => {
         const { error } = await supabase
           .from("uploaded_files")
@@ -286,6 +262,9 @@ export const clipVideo = inngest.createFunction(
         }
       });
     } else {
+      await step.run("refund-credits", async () => {
+        await refundProcessingCredits(supabase, uploadedFileId, userId);
+      });
       await step.run("update-to-error", async () => {
         await supabase
           .from("uploaded_files")
@@ -295,6 +274,21 @@ export const clipVideo = inngest.createFunction(
     }
   }
 );
+
+async function refundProcessingCredits(
+  supabase: ReturnType<typeof createServiceClient>,
+  uploadedFileId: string,
+  userId: string,
+) {
+  const { error } = await supabase.rpc("refund_video_processing", {
+    p_uploaded_file_id: uploadedFileId,
+    p_user_id: userId,
+  });
+
+  if (error) {
+    throw new Error(`Failed to refund processing credits: ${error.message}`);
+  }
+}
 
 
 async function getClips(prefix: string) {

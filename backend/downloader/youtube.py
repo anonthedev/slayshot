@@ -25,9 +25,11 @@ def download_youtube_video(
             "--no-warnings",
             "--merge-output-format", "mp4",
             "-f", "bv*+ba/best",
-            "--cookies", COOKIE_PATH,
             "-o", temp_file,
         ]
+
+        if os.path.exists(COOKIE_PATH):
+            command += ["--cookies", COOKIE_PATH]
 
         if start_time is not None or end_time is not None:
             start_str = seconds_to_hhmmss(start_time or 0)

@@ -9,7 +9,6 @@ import modal
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import whisperx
-from openai import OpenAI
 from google import genai
 
 from config import (
@@ -28,11 +27,14 @@ from transcription.utils import filter_transcript_by_time
 from transcription.whisperx_service import transcribe_s3_audio, transcribe_video
 from video.processing import process_clip, process_segment
 
+MODAL_APP_NAME = os.environ.get("MODAL_APP_NAME", "slayshot")
+MODAL_SECRET_NAME = os.environ.get("MODAL_SECRET_NAME", "slayshot-secret")
+MODAL_VOLUME_NAME = os.environ.get("MODAL_VOLUME_NAME", "slayshot-model-cache")
 
 image = (
     modal.Image
     .from_registry("nvidia/cuda:12.4.0-devel-ubuntu22.04", add_python="3.12")
-    .apt_install(["ffmpeg", "libgl1-mesa-glx", "wget", "libcudnn8", "libcudnn8-dev", "python3-pip"])
+    .apt_install(["ffmpeg", "libgl1-mesa-glx", "wget", "patch", "libcudnn8", "libcudnn8-dev", "python3-pip"])
     .pip_install_from_requirements("requirements.txt")
     .pip_install(["yt-dlp"])
     .run_commands([
@@ -50,6 +52,14 @@ image = (
         "pip install -U yt-dlp",
     ])
     .add_local_dir("asd", "/asd", copy=True)
+    .add_local_file(
+        "patches/lr-asd-numpy-int.patch",
+        remote_path="/tmp/lr-asd-numpy-int.patch",
+        copy=True,
+    )
+    .run_commands([
+        "patch -d /asd -p1 < /tmp/lr-asd-numpy-int.patch",
+    ])
     .add_local_dir("ai", "/root/ai", copy=True)
     .add_local_dir("downloader", "/root/downloader", copy=True)
     .add_local_dir("storage", "/root/storage", copy=True)
@@ -57,13 +67,15 @@ image = (
     .add_local_dir("video", "/root/video", copy=True)
     .add_local_file("config.py", remote_path="/root/config.py", copy=True)
     .add_local_file("models.py", remote_path="/root/models.py", copy=True)
-    .add_local_file("./cookies.txt", remote_path=COOKIE_PATH)
 )
 
+if pathlib.Path("./cookies.txt").exists():
+    image = image.add_local_file("./cookies.txt", remote_path=COOKIE_PATH)
 
-app = modal.App("omen-clipper", image=image)
 
-volume = modal.Volume.from_name("omen-clipper-model-cache", create_if_missing=True)
+app = modal.App(MODAL_APP_NAME, image=image)
+
+volume = modal.Volume.from_name(MODAL_VOLUME_NAME, create_if_missing=True)
 
 mount_path = "/root/.cache/torch"
 
@@ -75,12 +87,15 @@ auth_scheme = HTTPBearer()
     timeout=85000,
     retries=0,
     scaledown_window=20,
-    secrets=[modal.Secret.from_name("omen-clipper-secret")],
+    secrets=[modal.Secret.from_name(MODAL_SECRET_NAME)],
     volumes={mount_path: volume},
 )
 class OmenClipper:
     @modal.enter()
     def load_model(self):
+        if not S3_BUCKET:
+            raise RuntimeError("S3_BUCKET_NAME is required")
+
         self.whisperx_model = whisperx.load_model(
             WHISPERX_MODEL_SIZE, device=WHISPERX_DEVICE, compute_type=WHISPERX_COMPUTE_TYPE,
         )
@@ -88,7 +103,6 @@ class OmenClipper:
             language_code="en", device=WHISPERX_DEVICE,
         )
 
-        self.openai_client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
         self.gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
         print("Transcription models loaded...")
@@ -108,37 +122,23 @@ class OmenClipper:
 
         video_path = base_dir / "input_video.mp4"
 
-        if request.youtube_url:
-            print(f"Processing YouTube URL: {request.youtube_url}")
+        print(f"Processing YouTube URL: {request.youtube_url}")
 
-            if not request.uuid:
-                raise HTTPException(status_code=400, detail="UUID is required when processing YouTube URLs")
+        download_success = download_youtube_video(
+            request.youtube_url,
+            str(video_path),
+            start_time=request.start_time,
+            end_time=request.end_time,
+        )
 
-            download_success = download_youtube_video(
-                request.youtube_url,
-                str(video_path),
-                start_time=request.start_time,
-                end_time=request.end_time,
-            )
+        if not download_success:
+            raise HTTPException(status_code=500, detail="Failed to download YouTube video")
 
-            if not download_success:
-                raise HTTPException(status_code=500, detail="Failed to download YouTube video")
+        s3_key = f"{request.uuid}/original.mp4"
+        upload_success = upload_to_s3(str(video_path), s3_key)
 
-            s3_key = f"{request.uuid}/original.mp4"
-
-            upload_success = upload_to_s3(str(video_path), s3_key)
-
-            if not upload_success:
-                raise HTTPException(status_code=500, detail="Failed to upload video to S3")
-
-        elif request.s3_key:
-            print("Trying to download S3 key:", request.s3_key)
-            s3_key = request.s3_key
-
-            s3_client = get_s3_client()
-            s3_client.download_file(S3_BUCKET, s3_key, str(video_path))
-        else:
-            raise HTTPException(status_code=400, detail="Either youtube_url or s3_key must be provided")
+        if not upload_success:
+            raise HTTPException(status_code=500, detail="Failed to upload video to S3")
 
         transcript_json = transcribe_video(
             base_dir,
@@ -166,8 +166,7 @@ class OmenClipper:
 
         print(clip_moments)
 
-        is_youtube_processing = request.youtube_url is not None
-        uuid_or_s3_key = request.uuid if is_youtube_processing else s3_key
+        uuid_or_s3_key = request.uuid
         layout_value = (request.layout or "full").lower()
         bait_value = request.bait_video or "minecraft_night"
 
@@ -186,7 +185,7 @@ class OmenClipper:
                         moment["end"],
                         index,
                         transcript,
-                        is_uuid=is_youtube_processing,
+                        is_uuid=True,
                         layout=layout_value,
                         bait_video=bait_value,
                         virality_score=virality_score,
@@ -249,11 +248,7 @@ class OmenClipper:
                 with open(metadata_path, 'w') as f:
                     json.dump(metadata, f, indent=2)
 
-                if is_youtube_processing:
-                    metadata_s3_key = f"{uuid_or_s3_key}/metadata.json"
-                else:
-                    s3_key_dir = os.path.dirname(uuid_or_s3_key)
-                    metadata_s3_key = f"{s3_key_dir}/metadata.json"
+                metadata_s3_key = f"{uuid_or_s3_key}/metadata.json"
                 s3_client = get_s3_client()
                 s3_client.upload_file(str(metadata_path), S3_BUCKET, metadata_s3_key)
                 print(f"Metadata uploaded to S3: {metadata_s3_key}")
@@ -461,12 +456,6 @@ def main():
         # "start_time": 0,    # optional: start time in seconds
         # "end_time": 200,    # optional: end time in seconds
     }
-
-    # Example: process a video already uploaded to S3
-    # payload = {
-    #     "s3_key": "your-folder/input.mp4",
-    #     "layout": "full",
-    # }
 
     # Example: transcribe audio only
     # audio_url = omen_clipper.transcribe_audio.web_url

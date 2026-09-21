@@ -8,9 +8,6 @@ import { Card, CardContent } from "@/components/ui/card";
 interface Clip {
   id: string;
   s3_key: string;
-  title: string;
-  status: string;
-  uploaded: boolean;
   created_at: string;
   virality_score?: number | null;
   transcript?: string | null;

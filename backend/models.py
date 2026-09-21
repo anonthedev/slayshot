@@ -2,9 +2,8 @@ from pydantic import BaseModel
 
 
 class ProcessVideoRequest(BaseModel):
-    s3_key: str | None = None
-    youtube_url: str | None = None
-    uuid: str | None = None
+    youtube_url: str
+    uuid: str
     start_time: float | None = None
     end_time: float | None = None
     layout: str | None = "full"

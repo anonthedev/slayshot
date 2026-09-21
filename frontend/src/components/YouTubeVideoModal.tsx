@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { X, Play, Clock, Loader2 } from "lucide-react";
 import { processYouTubeVideo } from "@/actions/youtube";
 import { LAYOUT_OPTIONS, BAIT_VIDEO_OPTIONS, LayoutType, BaitVideoType } from "@/lib/constants";
+import { calculateRequiredCredits as getRequiredCredits } from "@/lib/credits";
 
 interface YouTubeVideoDetails {
   id: string;
@@ -29,34 +30,6 @@ interface YouTubeVideoModalProps {
   isOpen: boolean;
   onClose: () => void;
   videoUrl: string;
-}
-
-// Extracts YouTube video ID from any valid YouTube URL
-function extractYouTubeVideoId(url: string): string | null {
-  try {
-    const parsed = new URL(url);
-    if (parsed.hostname.endsWith("youtu.be")) {
-      return parsed.pathname.split("/").filter(Boolean)[0] || null;
-    }
-    if (
-      parsed.hostname.endsWith("youtube.com") ||
-      parsed.hostname.endsWith("m.youtube.com")
-    ) {
-      if (parsed.pathname === "/watch" && parsed.searchParams.get("v")) {
-        return parsed.searchParams.get("v");
-      }
-      const match = parsed.pathname.match(
-        /\/(embed|v|shorts)\/([a-zA-Z0-9_-]{11})/
-      );
-      if (match) {
-        return match[2];
-      }
-    }
-    const fallback = url.match(/[a-zA-Z0-9_-]{11}/);
-    return fallback ? fallback[0] : null;
-  } catch {
-    return null;
-  }
 }
 
 export default function YouTubeVideoModal({
@@ -79,20 +52,13 @@ export default function YouTubeVideoModal({
   const [baitVideo, setBaitVideo] = useState<BaitVideoType>("minecraft_night");
 
   useEffect(() => {
-    if (isOpen && videoUrl) {
-      fetchVideoDetails();
-      fetchUserCredits();
-    }
-  }, [isOpen, videoUrl]);
-
-  useEffect(() => {
     if (videoDetails) {
       setEndTime(videoDetails.duration);
       setEndTimeInput(formatTime(videoDetails.duration));
     }
   }, [videoDetails]);
 
-  const fetchVideoDetails = async () => {
+  const fetchVideoDetails = useCallback(async () => {
     setLoading(true);
     try {
       const response = await fetch("/api/youtube/details", {
@@ -118,9 +84,9 @@ export default function YouTubeVideoModal({
     } finally {
       setLoading(false);
     }
-  };
+  }, [videoUrl]);
 
-  const fetchUserCredits = async () => {
+  const fetchUserCredits = useCallback(async () => {
     setCreditsLoading(true);
     try {
       const response = await fetch("/api/user/credits", {
@@ -145,7 +111,14 @@ export default function YouTubeVideoModal({
     } finally {
       setCreditsLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (isOpen && videoUrl) {
+      fetchVideoDetails();
+      fetchUserCredits();
+    }
+  }, [fetchUserCredits, fetchVideoDetails, isOpen, videoUrl]);
 
   const formatTime = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600);
@@ -183,10 +156,7 @@ export default function YouTubeVideoModal({
   };
 
   const calculateRequiredCredits = (): number => {
-    const durationInSeconds = endTime - startTime;
-    const baseCredits = Math.ceil(durationInSeconds / 60); // 1 credit per minute, rounded up
-    const splitSurcharge = layout === "split" ? 5 : 0; // 5 extra credits for split layout
-    return baseCredits + splitSurcharge;
+    return getRequiredCredits(startTime, endTime, layout);
   };
 
   const hasEnoughCredits = (): boolean => {
@@ -213,10 +183,7 @@ export default function YouTubeVideoModal({
 
     setProcessing(true);
     try {
-      // Always pass canonical YouTube URL (https://youtube.com/watch?v=ID)
-      const videoId = extractYouTubeVideoId(videoDetails.url);
-      const canonicalUrl = videoId ? `https://youtube.com/watch?v=${videoId}` : videoDetails.url;
-      await processYouTubeVideo(canonicalUrl, startTime, endTime, layout, baitVideo);
+      await processYouTubeVideo(videoDetails.url, startTime, endTime, layout, baitVideo);
 
       toast.success("Video processing started successfully!");
       onClose();

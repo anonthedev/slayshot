@@ -14,7 +14,6 @@ transformers==4.44.2
 accelerate
 datasets
 google-genai
-openai
 pysubs2
 boto3
 fastapi[standard]

@@ -1,28 +1,81 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Suspense } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
 function ConfirmationContent() {
   const searchParams = useSearchParams();
   const checkoutId = searchParams.get("checkout_id");
+  const [status, setStatus] = useState<"checking" | "applied" | "pending">(
+    "checking",
+  );
+  const [credits, setCredits] = useState(0);
+
+  useEffect(() => {
+    if (!checkoutId) {
+      setStatus("pending");
+      return;
+    }
+
+    let cancelled = false;
+
+    async function verifyPurchase() {
+      for (let attempt = 0; attempt < 30 && !cancelled; attempt += 1) {
+        try {
+          const response = await fetch(
+            `/api/payments/status?checkout_id=${encodeURIComponent(checkoutId!)}`,
+            { cache: "no-store" },
+          );
+
+          if (response.ok) {
+            const result = await response.json();
+            if (result.applied) {
+              setCredits(result.credits);
+              setStatus("applied");
+              return;
+            }
+          }
+        } catch {
+          if (attempt === 29 && !cancelled) setStatus("pending");
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+
+      if (!cancelled) setStatus("pending");
+    }
+
+    void verifyPurchase();
+    return () => {
+      cancelled = true;
+    };
+  }, [checkoutId]);
 
   return (
     <div className="container mx-auto px-4 py-16">
       <Card className="max-w-md mx-auto">
         <CardHeader className="text-center">
-          <CardTitle>Purchase Successful!</CardTitle>
+          <CardTitle>
+            {status === "applied"
+              ? "Purchase successful!"
+              : "Confirming your purchase…"}
+          </CardTitle>
           <CardDescription>
-            Your credits have been added to your account
+            {status === "applied"
+              ? `${credits} credits were added to your account`
+              : "We are confirming your credit balance"}
           </CardDescription>
         </CardHeader>
         <CardContent className="text-center">
           <div className="mb-6">
             <div className="text-3xl font-bold mb-2">✓</div>
             <div className="text-sm text-muted-foreground">
-              Credits Added Successfully
+              {status === "checking" && "Checking payment status…"}
+              {status === "applied" && "Credits added successfully"}
+              {status === "pending" &&
+                "Payment received. Credits may take another moment to appear."}
             </div>
           </div>
 
@@ -38,7 +91,11 @@ function ConfirmationContent() {
           )}
 
           <div className="space-y-3 mb-6">
-            <div className="text-sm">✓ Credits added to your account</div>
+            <div className="text-sm">
+              {status === "applied"
+                ? "✓ Credit balance updated"
+                : "• Credit update pending"}
+            </div>
             <div className="text-sm">✓ Credits never expire</div>
             <div className="text-sm">✓ Ready to create amazing clips</div>
           </div>

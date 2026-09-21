@@ -6,26 +6,7 @@ import { useSession } from "next-auth/react";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
 import { supabaseClient } from "@/lib/supabase";
-
-// Credit packages configuration
-const CREDIT_PACKAGES = [
-  {
-    id: process.env.NEXT_PUBLIC_POLAR_STARTER_PRODUCT_ID!,
-    name: "Starter Pack",
-    credits: 100,
-    price: 8,
-    description: "Perfect for getting started",
-    popular: false,
-  },
-  {
-    id: process.env.NEXT_PUBLIC_POLAR_PRO_PRODUCT_ID!,
-    name: "Pro Pack",
-    credits: 200,
-    price: 15,
-    description: "Best value for power users",
-    popular: true,
-  },
-];
+import { CREDIT_PACKAGES } from "@/lib/payments";
 
 export default function Pricing() {
   const { data: session } = useSession();
@@ -116,7 +97,7 @@ export default function Pricing() {
 
       <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
         {CREDIT_PACKAGES.map((pkg) => (
-          <Card key={pkg.id} className={pkg.popular ? "ring-2 ring-primary" : ""}>
+          <Card key={pkg.name} className={pkg.popular ? "ring-2 ring-primary" : ""}>
             <CardHeader>
               <div className="flex justify-between items-start">
                 <div>
@@ -157,8 +138,8 @@ export default function Pricing() {
                 </li>
               </ul>
               <Button 
-                onClick={() => handlePurchase(pkg.id)} 
-                disabled={isLoading} 
+                onClick={() => pkg.id && handlePurchase(pkg.id)}
+                disabled={isLoading || !pkg.id}
                 className="w-full"
               >
                 {isLoading ? "Processing..." : `Buy ${pkg.credits} Credits`}

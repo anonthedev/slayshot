@@ -1,11 +1,14 @@
-S3_BUCKET = "omenclip"
+import os
+
+
+S3_BUCKET = os.environ.get("S3_BUCKET_NAME", "").strip()
 
 TARGET_WIDTH = 1080
 TARGET_HEIGHT = 1920
 
 DEFAULT_LAYOUT = "full"
 DEFAULT_BAIT_VIDEO = "minecraft_night"
-GAMEPLAY_S3_PREFIX = "gameplay"
+GAMEPLAY_S3_PREFIX = os.environ.get("GAMEPLAY_S3_PREFIX", "gameplay")
 
 COLUMBIA_CWD = "/asd"
 COLUMBIA_MODEL_PATH = "weight/finetuning_TalkSet.model"

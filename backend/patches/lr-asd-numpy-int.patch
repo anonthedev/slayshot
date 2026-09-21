@@ -1,0 +1,13 @@
+diff --git a/model/faceDetector/s3fd/box_utils.py b/model/faceDetector/s3fd/box_utils.py
+index 0779bcd..1bf4be2 100644
+--- a/model/faceDetector/s3fd/box_utils.py
++++ b/model/faceDetector/s3fd/box_utils.py
+@@ -35,7 +35,7 @@ def nms_(dets, thresh):
+         inds = np.where(ovr <= thresh)[0]
+         order = order[inds + 1]
+ 
+-    return np.array(keep).astype(np.int)
++    return np.array(keep).astype(int)
+ 
+ 
+ def decode(loc, priors, variances):

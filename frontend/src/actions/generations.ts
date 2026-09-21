@@ -1,48 +1,9 @@
 "use server";
 
-import { inngest } from "@/inngest/client";
 import { supabaseClient } from "@/lib/supabase";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { auth } from "@/lib/auth";
-
-export async function processVideo(uploadedFileId: string) {
-  const session = await auth();
-  if (!session) throw new Error("Unauthorized");
-
-  const supabase = supabaseClient(session.supabaseAccessToken as string);
-
-  const { data: uploadedFile, error: uploadedFileError } = await supabase
-    .from("uploaded_files")
-    .select("*")
-    .eq("id", uploadedFileId)
-    .single();
-
-  if (uploadedFileError) throw uploadedFileError;
-
-  if (uploadedFile.uploaded) return;
-
-  inngest.send({
-    name: "clip-video-events",
-    data: {
-      uploadedFileId: uploadedFileId,
-      userId: session.user.id,
-    },
-  });
-
-  const { error } = await supabase
-    .from("uploaded_files")
-    .update({
-      uploaded: true,
-    })
-    .eq("id", uploadedFileId)
-    .select("*")
-    .single();
-
-  if (error) throw error;
-  
-  return { success: true };
-}
 
 export async function getClipPlayUrl(
   clipId: string,

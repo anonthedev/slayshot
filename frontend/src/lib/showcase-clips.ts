@@ -5,22 +5,34 @@ export type ShowcaseClip = {
 };
 
 /**
- * Add private S3 video URIs here. They are signed on the server before being
- * sent to the browser, so the bucket can remain private.
- *
- * Example: "s3://your-bucket/showcase/my-clip.mp4"
+ * Configure private S3 video URIs with SHOWCASE_S3_URIS. The value may be a
+ * JSON array or a comma/newline-separated list. URIs are signed on the server
+ * before being sent to the browser, so the bucket can remain private.
  */
-export const SHOWCASE_S3_URIS: string[] = [
-  "s3://omenclip/2c6703ea-0acd-4bb0-9e9e-cc54fc671096/clip_1.mp4",
-  "s3://omenclip/11751ddf-3e91-4673-9632-9b6d67b53200/clip_6.mp4",
-  "s3://omenclip/11751ddf-3e91-4673-9632-9b6d67b53200/clip_4.mp4",
-  "s3://omenclip/0de9e936-add7-452c-b595-f78d917bf537/clip_8.mp4",
-  "s3://omenclip/0de9e936-add7-452c-b595-f78d917bf537/clip_6.mp4",
-  "s3://omenclip/0de9e936-add7-452c-b595-f78d917bf537/clip_5.mp4",
-  "s3://omenclip/2d7efc88-c143-482d-85e4-b22064d607c7/clip_2.mp4",
-  "s3://omenclip/2d7efc88-c143-482d-85e4-b22064d607c7/clip_1.mp4",
-  "s3://omenclip/2c6703ea-0acd-4bb0-9e9e-cc54fc671096/clip_3.mp4",
-];
+function getShowcaseS3Uris(): string[] {
+  const raw = process.env.SHOWCASE_S3_URIS?.trim();
+  if (!raw) return [];
+
+  if (raw.startsWith("[")) {
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed) || !parsed.every((uri) => typeof uri === "string")) {
+        throw new Error("expected an array of strings");
+      }
+      return parsed.map((uri) => uri.trim()).filter(Boolean);
+    } catch (error) {
+      console.error("Invalid SHOWCASE_S3_URIS JSON:", error);
+      return [];
+    }
+  }
+
+  return raw
+    .split(/[,\n]/)
+    .map((uri) => uri.trim())
+    .filter(Boolean);
+}
+
+export const SHOWCASE_S3_URIS = getShowcaseS3Uris();
 
 export const SHOWCASE_CLIPS: ShowcaseClip[] = SHOWCASE_S3_URIS.map(
   (src, index) => ({

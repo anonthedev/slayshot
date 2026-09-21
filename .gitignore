@@ -24,7 +24,7 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # Large media files
-/backend/*.mp4
+*.mp4
 *.avi
 *.mov
 *.mkv
@@ -45,7 +45,8 @@ yarn-error.log*
 *.ckpt
 *.h5
 
-# yt-dlp partial downloads
+# yt-dlp cookies and partial downloads
+cookies.txt
 *.ytdl
 *.part
 

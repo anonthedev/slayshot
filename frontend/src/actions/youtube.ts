@@ -3,40 +3,30 @@
 import { inngest } from "@/inngest/client";
 import { auth } from "@/lib/auth";
 import { supabaseClient } from "@/lib/supabase";
-import { LayoutType, BaitVideoType } from "@/lib/constants";
+import {
+  LAYOUT_OPTIONS,
+  BAIT_VIDEO_OPTIONS,
+  LayoutType,
+  BaitVideoType,
+} from "@/lib/constants";
+import {
+  calculateRequiredCredits,
+  validateProcessingRange,
+} from "@/lib/credits";
+import { getYouTubeVideoDetails } from "@/lib/youtube";
 import { v4 as uuidv4 } from "uuid";
-
-// Extracts YouTube video ID from any valid YouTube URL
-function extractYouTubeVideoId(url: string): string | null {
-  try {
-    const parsed = new URL(url);
-    if (parsed.hostname.endsWith("youtu.be")) {
-      return parsed.pathname.split("/").filter(Boolean)[0] || null;
-    }
-    if (
-      parsed.hostname.endsWith("youtube.com") ||
-      parsed.hostname.endsWith("m.youtube.com")
-    ) {
-      if (parsed.pathname === "/watch" && parsed.searchParams.get("v")) {
-        return parsed.searchParams.get("v");
-      }
-      const match = parsed.pathname.match(
-        /\/(embed|v|shorts)\/([a-zA-Z0-9_-]{11})/
-      );
-      if (match) {
-        return match[2];
-      }
-    }
-    const fallback = url.match(/[a-zA-Z0-9_-]{11}/);
-    return fallback ? fallback[0] : null;
-  } catch {
-    return null;
-  }
-}
 
 export async function processYouTubeVideo(youtubeUrl: string, startTime: number, endTime: number, layout: LayoutType = "full", baitVideo: BaitVideoType = "minecraft_night") {
   const session = await auth();
   if (!session) throw new Error("Unauthorized");
+
+  if (!LAYOUT_OPTIONS.some((option) => option.value === layout)) {
+    throw new Error("Invalid video layout");
+  }
+
+  if (!BAIT_VIDEO_OPTIONS.some((option) => option.value === baitVideo)) {
+    throw new Error("Invalid bait video");
+  }
 
   const supabase = supabaseClient(session.supabaseAccessToken as string);
 
@@ -44,38 +34,24 @@ export async function processYouTubeVideo(youtubeUrl: string, startTime: number,
   const sessionUuid = uuidv4();
   const s3Key = `${sessionUuid}/original.mp4`;
 
-  // Fetch video metadata to get actual title and thumbnail
-  let videoTitle = "YouTube Video";
-  let videoThumbnail = null;
-  let videoId = null;
-  
+  let videoDetails: Awaited<ReturnType<typeof getYouTubeVideoDetails>>;
   try {
-    videoId = extractYouTubeVideoId(youtubeUrl);
-    if (videoId) {
-      // Fetch video details from YouTube API
-      const videoDetailsResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/youtube/details`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ url: youtubeUrl }),
-      });
-      
-      if (videoDetailsResponse.ok) {
-        const videoDetails = await videoDetailsResponse.json();
-        videoTitle = videoDetails.title || `YouTube Video (${videoId})`;
-        videoThumbnail = videoDetails.thumbnail;
-      } else {
-        // Fallback to ID-based title if API call fails
-        videoTitle = `YouTube Video (${videoId})`;
-      }
-    }
+    videoDetails = await getYouTubeVideoDetails(youtubeUrl);
+    validateProcessingRange(startTime, endTime, videoDetails.duration);
   } catch (error) {
     console.error("Error fetching video metadata:", error);
-    // Fallback to ID-based title if any error occurs
-    if (videoId) {
-      videoTitle = `YouTube Video (${videoId})`;
-    }
+    throw new Error("Could not validate the requested video");
+  }
+
+  const requiredCredits = calculateRequiredCredits(startTime, endTime, layout);
+  const { data: user, error: userError } = await supabase
+    .from("users")
+    .select("credits")
+    .eq("id", session.user.id)
+    .single();
+
+  if (userError || Number(user?.credits ?? 0) < requiredCredits) {
+    throw new Error("Insufficient credits");
   }
 
   const { data: uploadedFileDBRecord, error } = await supabase
@@ -83,13 +59,13 @@ export async function processYouTubeVideo(youtubeUrl: string, startTime: number,
     .insert({
       user_id: session.user.id,
       s3_key: s3Key,
-      title: videoTitle,
-      thumbnail: videoThumbnail,
+      title: videoDetails.title,
+      thumbnail: videoDetails.thumbnail,
       status: "processing",
       uploaded: true,
       start_time: startTime,
       end_time: endTime,
-      source_url: youtubeUrl,
+      source_url: videoDetails.url,
       layout: layout,
       bait_video: baitVideo
     })
@@ -105,13 +81,7 @@ export async function processYouTubeVideo(youtubeUrl: string, startTime: number,
     name: "clip-video-events",
     data: {
       uploadedFileId: uploadedFileDBRecord.id,
-      userId: session.user.id, 
-      youtubeUrl: youtubeUrl,
-      uuid: sessionUuid,
-      startTime,
-      endTime,
-      layout,
-      baitVideo,
+      userId: session.user.id,
     }
   });
 

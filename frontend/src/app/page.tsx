@@ -19,7 +19,6 @@ import {
 
 export const dynamic = "force-dynamic";
 
-// Replace this placeholder when the public repository is ready.
 const GITHUB_URL = "https://github.com/anonthedev/omenclip";
 
 async function resolveShowcaseClips(): Promise<ShowcaseClip[]> {
