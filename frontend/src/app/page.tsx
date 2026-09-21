@@ -118,7 +118,7 @@ export default async function Home() {
           </a>
 
           <h1 className="max-w-[1100px] text-[clamp(3.6rem,10vw,9.2rem)] font-semibold leading-[0.84] tracking-[-0.075em] text-white">
-            Slayshot shut down.
+            Slayshot is shut down.
             <span className="block text-white/30">The work lives on.</span>
           </h1>
 
