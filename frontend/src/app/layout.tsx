@@ -12,9 +12,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "slayshot",
+  title: "Slayshot — Open-source AI video clipping",
   description:
-    "Transform long youtube videos into viral clips with AI-powered precision",
+    "Turn long-form video into sharp, captioned vertical clips. Slayshot is now open source.",
 };
 
 export default function RootLayout({

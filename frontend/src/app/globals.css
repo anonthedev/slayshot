@@ -119,3 +119,116 @@
     @apply bg-background text-foreground;
   }
 }
+
+html {
+  scroll-behavior: smooth;
+}
+
+.landing-page {
+  position: relative;
+  isolation: isolate;
+}
+
+.landing-noise {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  opacity: 0.035;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.7'/%3E%3C/svg%3E");
+}
+
+.landing-orb {
+  position: absolute;
+  top: -13rem;
+  left: 56%;
+  width: 46rem;
+  height: 46rem;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle,
+    rgba(199, 255, 53, 0.13) 0%,
+    rgba(199, 255, 53, 0.035) 45%,
+    transparent 72%
+  );
+  filter: blur(10px);
+  pointer-events: none;
+}
+
+.landing-video-shell {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1.5rem;
+  background: #111;
+  box-shadow:
+    0 50px 120px -60px rgba(0, 0, 0, 0.95),
+    0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+}
+
+.landing-video-stage {
+  position: relative;
+  height: min(72dvh, 48rem);
+  min-height: 28rem;
+  overflow: hidden;
+  background: #050505;
+}
+
+.landing-cta::after {
+  content: "";
+  position: absolute;
+  width: 35rem;
+  height: 35rem;
+  right: -8rem;
+  top: -16rem;
+  border: 1px solid rgba(0, 0, 0, 0.16);
+  border-radius: 9999px;
+  box-shadow:
+    0 0 0 70px rgba(0, 0, 0, 0.035),
+    0 0 0 140px rgba(0, 0, 0, 0.025);
+}
+
+@media (min-width: 1024px) {
+  .landing-video-shell {
+    grid-template-columns: minmax(0, 1fr) 22rem;
+    height: min(78dvh, 52rem);
+    min-height: 32rem;
+  }
+
+  .landing-video-stage {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .landing-video-catalog {
+    min-height: 0;
+    overflow: hidden;
+  }
+}
+
+@media (max-width: 640px) {
+  .landing-video-stage {
+    height: min(72dvh, 42rem);
+    min-height: 26rem;
+  }
+
+  .landing-orb {
+    left: 15%;
+    width: 28rem;
+    height: 28rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .landing-page *,
+  .landing-page *::before,
+  .landing-page *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

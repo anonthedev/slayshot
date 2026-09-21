@@ -3,9 +3,7 @@ import json
 import os
 import pathlib
 import shutil
-import subprocess
 import uuid
-import time
 
 import modal
 from fastapi import Depends, HTTPException
@@ -21,13 +19,13 @@ from config import (
     WHISPERX_MODEL_SIZE,
     WHISPERX_DEVICE,
     WHISPERX_COMPUTE_TYPE,
-    WHISPERX_BATCH_SIZE,
 )
 from models import ProcessVideoRequest, TranscribeAudioRequest, ProcessSegmentsRequest
 from ai.viral_moments import identify_viral_moments
 from downloader.youtube import download_youtube_video
 from storage.s3 import get_s3_client, upload_to_s3
 from transcription.utils import filter_transcript_by_time
+from transcription.whisperx_service import transcribe_s3_audio, transcribe_video
 from video.processing import process_clip, process_segment
 
 
@@ -52,6 +50,13 @@ image = (
         "pip install -U yt-dlp",
     ])
     .add_local_dir("asd", "/asd", copy=True)
+    .add_local_dir("ai", "/root/ai", copy=True)
+    .add_local_dir("downloader", "/root/downloader", copy=True)
+    .add_local_dir("storage", "/root/storage", copy=True)
+    .add_local_dir("transcription", "/root/transcription", copy=True)
+    .add_local_dir("video", "/root/video", copy=True)
+    .add_local_file("config.py", remote_path="/root/config.py", copy=True)
+    .add_local_file("models.py", remote_path="/root/models.py", copy=True)
     .add_local_file("./cookies.txt", remote_path=COOKIE_PATH)
 )
 
@@ -87,76 +92,6 @@ class OmenClipper:
         self.gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
         print("Transcription models loaded...")
-
-    def transcription(self, base_dir: pathlib.Path, video_path: pathlib.Path) -> str:
-        audio_path = base_dir / "audio.wav"
-        extract_cmd = f"ffmpeg -i {video_path} -vn -acodec pcm_s16le -ar 16000 -ac 1 {audio_path}"
-        subprocess.run(extract_cmd, shell=True, check=True, capture_output=True)
-
-        print("starting transcription with WhisperX...")
-        start_time = time.time()
-        audio = whisperx.load_audio(str(audio_path))
-        result = self.whisperx_model.transcribe(audio, batch_size=WHISPERX_BATCH_SIZE)
-        result = whisperx.align(
-            result["segments"], self.alignment_model, self.metadata,
-            audio, device=WHISPERX_DEVICE, return_char_alignments=False,
-        )
-        duration = time.time() - start_time
-
-        print("Transcription took", str(duration))
-
-        segments = []
-        if "word_segments" in result:
-            for word_segment in result["word_segments"]:
-                segments.append({
-                    "start": word_segment["start"],
-                    "end": word_segment["end"],
-                    "word": word_segment["word"],
-                })
-        print(json.dumps(segments))
-        return json.dumps(segments)
-
-    def transcribe_audio_file(self, audio_s3_key: str) -> str:
-        """Transcribe an audio file directly from S3 using WhisperX."""
-        run_id = str(uuid.uuid4())
-        temp_dir = pathlib.Path("/tmp") / f"audio_transcription_{run_id}"
-        temp_dir.mkdir(parents=True, exist_ok=True)
-
-        try:
-            audio_path = temp_dir / "audio_file"
-            s3_client = get_s3_client()
-            s3_client.download_file(S3_BUCKET, audio_s3_key, str(audio_path))
-
-            wav_path = temp_dir / "audio.wav"
-            convert_cmd = f"ffmpeg -i {audio_path} -vn -acodec pcm_s16le -ar 16000 -ac 1 {wav_path}"
-            subprocess.run(convert_cmd, shell=True, check=True, capture_output=True)
-
-            print("Starting transcription with WhisperX...")
-            start_time = time.time()
-            audio = whisperx.load_audio(str(wav_path))
-            result = self.whisperx_model.transcribe(audio, batch_size=WHISPERX_BATCH_SIZE)
-            result = whisperx.align(
-                result["segments"], self.alignment_model, self.metadata,
-                audio, device=WHISPERX_DEVICE, return_char_alignments=False,
-            )
-            duration = time.time() - start_time
-
-            print(f"Audio transcription took {duration:.2f} seconds")
-
-            segments = []
-            if "word_segments" in result:
-                for word_segment in result["word_segments"]:
-                    segments.append({
-                        "start": word_segment["start"],
-                        "end": word_segment["end"],
-                        "word": word_segment["word"],
-                    })
-
-            return json.dumps(segments)
-
-        finally:
-            if temp_dir.exists():
-                shutil.rmtree(temp_dir, ignore_errors=True)
 
     @modal.fastapi_endpoint(method="POST")
     def process_video(self, request: ProcessVideoRequest, token: HTTPAuthorizationCredentials = Depends(auth_scheme)):
@@ -205,7 +140,13 @@ class OmenClipper:
         else:
             raise HTTPException(status_code=400, detail="Either youtube_url or s3_key must be provided")
 
-        transcript_json = self.transcription(base_dir, video_path)
+        transcript_json = transcribe_video(
+            base_dir,
+            video_path,
+            self.whisperx_model,
+            self.alignment_model,
+            self.metadata,
+        )
 
         transcript = json.loads(transcript_json)
 
@@ -341,7 +282,12 @@ class OmenClipper:
 
         try:
             print(f"Transcribing audio file: {request.s3_key}")
-            transcript_json = self.transcribe_audio_file(request.s3_key)
+            transcript_json = transcribe_s3_audio(
+                request.s3_key,
+                self.whisperx_model,
+                self.alignment_model,
+                self.metadata,
+            )
             transcript = json.loads(transcript_json)
 
             return {
@@ -508,8 +454,8 @@ def main():
 
     # Example: process a YouTube video
     payload = {
-        "youtube_url": "https://www.youtube.com/watch?v=YOUR_VIDEO_ID",
-        "uuid": "your-uuid-here",
+        "youtube_url": "https://www.youtube.com/watch?v=ANV6fbhTjyU",
+        "uuid": "010882aa-c6ee-4b10-9ee9-03fba1199eff",
         "layout": "full",  # "full" or "split"
         # "bait_video": "minecraft_night",  # only used with "split" layout
         # "start_time": 0,    # optional: start time in seconds
@@ -541,9 +487,15 @@ def main():
     # }
     # segments_response = requests.post(segments_url, json=segments_payload, headers=headers)
 
+    auth_token = os.environ.get("AUTH_TOKEN")
+    if not auth_token:
+        raise RuntimeError(
+            "AUTH_TOKEN must be set locally to call the authenticated Modal web endpoint."
+        )
+
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {os.environ.get('AUTH_TOKEN', '')}",
+        "Authorization": f"Bearer {auth_token}",
     }
 
     print(f"Sending request to {url} with payload {payload}")

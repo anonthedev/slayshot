@@ -3,6 +3,7 @@
 # Environment files
 .env
 .env.*
+!.env.example
 *.env
 
 # Python
@@ -23,7 +24,7 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # Large media files
-/backedn/*.mp4
+/backend/*.mp4
 *.avi
 *.mov
 *.mkv
