@@ -19,7 +19,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const GITHUB_URL = "https://github.com/anonthedev/omenclip";
+const GITHUB_URL = "https://github.com/anonthedev/slayshot";
 
 async function resolveShowcaseClips(): Promise<ShowcaseClip[]> {
   if (SHOWCASE_CLIPS.length === 0) return [];
